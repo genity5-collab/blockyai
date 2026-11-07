@@ -170,3 +170,5 @@
 .relist{margin-top:12px;display:grid;gap:6px}.chip.amber{background:color-mix(in srgb,var(--amber) 22%,transparent);color:var(--amber)}
 
 .rules{list-style:none;margin:8px 0;padding:0;display:grid;gap:6px}.rules li{display:grid;grid-template-columns:18px 1fr;gap:2px 8px;align-items:start;font-size:13px}.rules li code{grid-column:2;font-size:11px}.rules li.bad span{color:var(--text)}
+.diag-feats{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px}
+.diag-feats .chip{display:inline-flex;align-items:center;gap:4px}

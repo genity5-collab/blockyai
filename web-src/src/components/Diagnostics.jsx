@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { ArrowLeft, ShieldCheck, Loader2, Server, TerminalSquare, CircleCheck, CircleX } from "lucide-react";
+import React, { useEffect, useState, useCallback } from "react";
+import { ArrowLeft, ShieldCheck, Loader2, Server, TerminalSquare, CircleCheck, CircleX, Plug } from "lucide-react";
 import { useApp } from "../lib/store.jsx";
 import { web, call } from "../lib/api.js";
 
@@ -15,6 +15,11 @@ export default function Diagnostics() {
     if (!pick) return; setBusy(true); setRes(null);
     const r = await call("vm-verify", { session_id: pick }); setRes(r); setBusy(false);
   };
+  // Plugin panel: exactly what the Studio plugin reported at pairing and in its self-tests (refreshes every 5 s while this page is open).
+  const [plug, setPlug] = useState(null);
+  const loadPlug = useCallback(async () => { if (!pick) return; try { setPlug(await web("plugin_status", { session_id: pick })); } catch (e) { setPlug({ error: String(e?.message ?? e) }); } }, [pick]);
+  useEffect(() => { setPlug(null); loadPlug(); const t = setInterval(loadPlug, 5000); return () => clearInterval(t); }, [loadPlug]);
+  const seenAgo = plug?.plugin_last_seen_at ? Math.max(0, Math.round((Date.now() - new Date(plug.plugin_last_seen_at)) / 1000)) : null;
   const back = () => { location.hash = ""; };
   const ok = res?.exec && !res.exec.error && res.exec.exit_code === 0;
   const state = res?.freestyle?.state;
@@ -35,6 +40,35 @@ export default function Diagnostics() {
         <button className="brick green xl" onClick={verify} disabled={busy || !pick || !sess?.vm_id} style={{ marginTop: 12 }}>
           {busy ? <Loader2 size={18} className="spin" /> : <TerminalSquare size={18} />}{busy ? "Running on the VM..." : "Verify VM"}</button>
         {!sess?.vm_id && pick && <p className="muted small" style={{ marginTop: 8 }}>This session has no VM yet. Open it from the home screen so it starts, then come back.</p>}
+      </div>
+
+
+      <div className="glass hud diag-card">
+        <div className="diag-row"><Plug size={18} color="var(--blue)" /><b>Studio plugin</b>
+          {plug?.error ? <span className="chip red"><CircleX size={14} />{plug.error}</span>
+            : seenAgo == null ? <span className="chip amber">never connected</span>
+            : seenAgo < 20 ? <span className="chip green"><CircleCheck size={14} />connected, last seen {seenAgo}s ago</span>
+            : <span className="chip amber">not seen for {seenAgo}s</span>}</div>
+        {plug && !plug.error && (<>
+          <div className="diag-kv"><span>Studio version (reported by the plugin)</span><code>{plug.studio_version ?? "not reported"}</code></div>
+          <div className="diag-kv"><span>Plugin version</span><code>{plug.plugin_version ?? "not reported"}</code></div>
+          <div className="diag-kv"><span>Playtest running</span><code>{String(!!plug.playtest_active)}</code></div>
+          <div className="diag-kv"><span>Session tainted (untrusted game content seen)</span><code>{String(!!plug.tainted)}{plug.taint_reason ? " : " + plug.taint_reason : ""}</code></div>
+          <div className="diag-kv"><span>Commands in the last hour</span><code>{Object.keys(plug.commands_last_hour ?? {}).length ? Object.entries(plug.commands_last_hour).map(([k, v]) => k + " " + v).join(", ") : "none"}</code></div>
+          <div className="diag-lbl">Features this Studio reported</div>
+          <div className="diag-feats">{Object.keys(plug.studio_features ?? {}).length === 0 ? <span className="muted small">none reported (the plugin may be older than v4)</span>
+            : Object.entries(plug.studio_features).map(([k, v]) => <span key={k} className={"chip " + (v ? "green" : "red")}>{v ? <CircleCheck size={12} /> : <CircleX size={12} />}{k}</span>)}</div>
+          <div className="diag-lbl">Self-test results (press RUN SELF-TEST in the plugin's Settings tab)</div>
+          {(plug.selftests ?? []).length === 0 && <p className="muted small">No self-test has been run yet. Nothing here is verified until it has.</p>}
+          {(plug.selftests ?? []).slice(0, 2).map((t) => (
+            <div key={t.id} style={{ marginBottom: 10 }}>
+              <div className="diag-row"><span className={"chip " + (t.failed ? "red" : "green")}>{t.passed} passed, {t.failed} failed, {t.skipped} skipped</span>
+                <span className="muted small">{new Date(t.created_at).toLocaleString()} | Studio {t.studio_version || "?"} | plugin v{t.plugin_version ?? "?"}</span></div>
+              {(t.steps ?? []).map((st, i) => (
+                <div key={i} className="diag-kv"><span>{st.name}</span>
+                  <code style={{ color: st.status === "fail" ? "var(--red)" : st.status === "skip" || st.status === "fallback" ? "var(--amber)" : "var(--green)" }}>{st.status.toUpperCase()}{st.ms ? " " + st.ms + "ms" : ""}{st.error ? " : " + st.error : ""}</code></div>))}
+            </div>))}
+        </>)}
       </div>
 
       {res && (<>

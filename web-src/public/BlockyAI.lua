@@ -6,7 +6,7 @@ local Selection = game:GetService("Selection")
 local ChangeHistoryService = game:GetService("ChangeHistoryService")
 local LogService = game:GetService("LogService")
 
-local PLUGIN_VERSION = 3
+local PLUGIN_VERSION = 4
 local BASE = "https://blockyai.onrender.com/api/"
 local token = plugin:GetSetting("blockyai_token")
 local runLuaEnabled = plugin:GetSetting("blockyai_runlua") == true
@@ -27,6 +27,288 @@ local ALLOWED: { [string]: boolean } = {
 }
 
 -- ============ MODULES (inlined by build.mjs; each is a separate tested file under plugin/src) ============
+local Bridge = (function()
+-- BlockyAI command bridge (plugin side). Pure logic, no Roblox services: everything Studio-specific is injected, so it is unit tested.
+-- Responsibilities: (1) exactly-once from the plugin's side: a repeated idempotency key returns the stored result instead of running again,
+-- (2) refuse mutating commands during a playtest, (3) ACK when a command starts and heartbeat while it runs, (4) feature detection.
+local B = {}
+
+-- ---------- 200-entry result cache keyed by idempotency key (oldest evicted first) ----------
+export type Entry = { ok: boolean, result: any, error: string? }
+export type Cache = { map: { [string]: Entry }, order: { string }, cap: number }
+
+function B.newCache(cap: number?): Cache
+	return { map = {}, order = {}, cap = cap or 200 }
+end
+function B.cacheGet(c: Cache, key: string?): Entry?
+	if key == nil or key == "" then
+		return nil
+	end
+	return c.map[key]
+end
+function B.cachePut(c: Cache, key: string?, entry: Entry)
+	if key == nil or key == "" then
+		return
+	end
+	if c.map[key] == nil then
+		table.insert(c.order, key)
+		while #c.order > c.cap do
+			local old = table.remove(c.order, 1)
+			c.map[old :: string] = nil
+		end
+	end
+	c.map[key] = entry
+end
+
+-- ---------- commands that only read or control a playtest. Everything else changes the edit-mode DataModel. ----------
+local READ_ONLY: { [string]: boolean } = {
+	get_tree = true, find = true, get_selection = true, read_script = true, get_playtest_logs = true, get_edit_log = true,
+	get_bounding_box = true, get_pivot = true, raycast = true, find_empty_space = true, measure_distance = true,
+	screenshot = true, screenshot_multi = true, camera_set = true, snapshot_save = true, playtest_stop = true, template_load = true,
+	playtest_start = true,
+}
+function B.isMutating(t: string): boolean
+	return not READ_ONLY[t]
+end
+-- Returns an error message when `t` must not run now, else nil.
+function B.guard(t: string, playtestActive: boolean): string?
+	if playtestActive and B.isMutating(t) then
+		return "refused: a playtest is running, and '" .. t .. "' would change the edit-mode game (the change would be lost or confuse the test). Call playtest_stop, wait for it to end, then retry."
+	end
+	return nil
+end
+
+-- ---------- one command, start to finish ----------
+export type Env = {
+	handlers: { [string]: (any) -> any },
+	allowed: { [string]: boolean },
+	cache: Cache,
+	playtestActive: () -> boolean,
+	ack: (id: string) -> (),
+	heartbeat: (id: string) -> (),
+	clock: () -> number,
+	spawn: ((() -> ()) -> ())?,
+	wait: ((number) -> ())?,
+	beat_s: number?,
+}
+export type Outcome = { ok: boolean, result: any, error: string?, cached: boolean, refused: boolean }
+
+function B.execute(env: Env, c: any): Outcome
+	local t = tostring(c.type)
+	-- 1. Seen this idempotency key? Return the stored result. Never run it twice. Still ACK so the server stops waiting for us.
+	local hit = B.cacheGet(env.cache, c.idempotency_key)
+	if hit then
+		env.ack(c.id)
+		return { ok = hit.ok, result = hit.result, error = hit.error, cached = true, refused = false }
+	end
+	-- 2. Not on the allowlist (even if the server is compromised).
+	if not env.allowed[t] or not env.handlers[t] then
+		return { ok = false, result = nil, error = "command type not allowed: " .. t, cached = false, refused = true }
+	end
+	-- 3. Playtest guard: say why, do not just fail.
+	local why = B.guard(t, env.playtestActive())
+	if why then
+		return { ok = false, result = nil, error = why, cached = false, refused = true }
+	end
+	-- 4. ACK before doing any work, so the agent can tell "busy" from "not responding".
+	env.ack(c.id)
+	-- 5. Heartbeat while it runs. A long build_model must not lose its lease.
+	local running = true
+	if env.spawn and env.wait then
+		local spawn, wait = env.spawn, env.wait
+		local beat = env.beat_s or 10
+		spawn(function()
+			while running do
+				wait(beat)
+				if running then
+					env.heartbeat(c.id)
+				end
+			end
+		end)
+	end
+	local ok, res = pcall(env.handlers[t], c.payload or {})
+	running = false
+	local entry: Entry = { ok = ok, result = ok and res or nil, error = (not ok) and tostring(res) or nil }
+	B.cachePut(env.cache, c.idempotency_key, entry)
+	return { ok = ok, result = entry.result, error = entry.error, cached = false, refused = false }
+end
+
+-- ---------- feature detection: which APIs exist in THIS Studio. Each probe is pcall-wrapped by the caller-supplied `probe`. ----------
+B.FEATURES = { "StudioTestService", "ExecutePlayModeAsync", "ExecuteRunModeAsync", "CaptureService", "Terrain.FillBlock", "Terrain.WriteVoxels", "ChangeHistoryService.Recording", "Raycast", "HttpService.RequestAsync", "Selection" }
+function B.detect(probe: (string) -> boolean): { [string]: boolean }
+	local out: { [string]: boolean } = {}
+	for _, name in ipairs(B.FEATURES) do
+		local ok, v = pcall(probe, name)
+		out[name] = ok and v == true
+	end
+	return out
+end
+
+return B
+end)()
+
+local SelfTest = (function()
+-- BlockyAI in-Studio self-test. No AI is involved: the plugin exercises its own handlers against the real engine and reports pass/fail
+-- with the RAW error for each step. This file holds the RUNNER (ordering, pcall wrapping, cleanup, reporting) and the step LIST.
+-- The runner is unit tested with a fake engine. Whether each step passes in a real Studio can only be learned by pressing the button.
+local S = {}
+
+export type Step = { name: string, run: (ctx: any) -> any, optional: boolean?, requires: string? }
+export type StepResult = { name: string, status: string, error: string?, detail: any?, ms: number }
+export type Report = { passed: number, failed: number, skipped: number, steps: { StepResult }, cleaned: boolean, cleanup_error: string? }
+
+-- status is one of: pass, fail, skip (a required feature is missing), fallback (worked, but via the documented fallback)
+function S.run(steps: { Step }, ctx: any, features: { [string]: boolean }?, clock: (() -> number)?): Report
+	local now = clock or os.clock
+	local report: Report = { passed = 0, failed = 0, skipped = 0, steps = {}, cleaned = false }
+	for _, step in ipairs(steps) do
+		local t0 = now()
+		local r: StepResult = { name = step.name, status = "pass", ms = 0 }
+		if step.requires and features and features[step.requires] == false then
+			r.status = "skip"
+			r.error = "this Studio does not have " .. step.requires
+			report.skipped += 1
+		else
+			local ok, res = pcall(step.run, ctx)
+			if ok then
+				if type(res) == "table" and (res :: any).fallback == true then
+					r.status = "fallback"
+				end
+				r.detail = res
+				report.passed += 1
+			else
+				r.status = "fail"
+				r.error = tostring(res)
+				report.failed += 1
+			end
+		end
+		r.ms = math.floor((now() - t0) * 1000)
+		table.insert(report.steps, r)
+	end
+	-- Cleanup ALWAYS runs, even when steps failed, and a failing cleanup is reported rather than hidden.
+	local cok, cerr = true, nil :: any
+	if ctx and ctx.cleanup then
+		cok, cerr = pcall(ctx.cleanup)
+	end
+	report.cleaned = cok
+	if not cok then
+		report.cleanup_error = tostring(cerr)
+	end
+	return report
+end
+
+-- The fixed list. Each step receives `ctx`, which exposes the plugin's real handlers and a tracker so cleanup can remove what was made.
+-- `ctx.h` = handlers table, `ctx.http(fn, body)` = POST to the server, `ctx.track(path)` = remember an instance path for cleanup.
+function S.steps(): { Step }
+	local function must(cond: any, msg: string)
+		if not cond then
+			error(msg, 0)
+		end
+	end
+	return {
+		{ name = "HTTP reachability", run = function(ctx)
+			local data, code = ctx.http("plugin-register", { version = 0 })
+			must(code == 200 and data ~= nil, "plugin-register returned " .. tostring(code))
+			return { status = code }
+		end },
+		{ name = "build_model: kitchen-sink spec", run = function(ctx)
+			local r = ctx.h.build_model({ parent = ctx.root, spec = ctx.kitchenSink })
+			must(r and (r.errors == nil or #r.errors == 0), "build_model reported errors: " .. ctx.encode(r and r.errors or "no result"))
+			must((r.instances or 0) >= 10, "expected 10 or more instances, got " .. tostring(r and r.instances))
+			ctx.track(ctx.root .. ".SelfTestModel")
+			return { instances = r.instances }
+		end },
+		{ name = "script write + read-back", run = function(ctx)
+			local src = "print('blockyai selftest ' .. 1 + 1)\n"
+			ctx.h.write_script({ path = ctx.root .. ".SelfTestScript", class = "Script", source = src })
+			ctx.track(ctx.root .. ".SelfTestScript")
+			local back = ctx.h.read_script({ path = ctx.root .. ".SelfTestScript" })
+			must(back and back.source == src, "read-back differs from what was written")
+			return { bytes = #src }
+		end },
+		{ name = "ui_build", run = function(ctx)
+			local r = ctx.h.ui_build({ parent = ctx.root, spec = ctx.uiSpec })
+			must(r and (r.errors == nil or #r.errors == 0), "ui_build reported errors: " .. ctx.encode(r and r.errors or "no result"))
+			ctx.track(ctx.root .. ".SelfTestGui")
+			return { instances = r.instances }
+		end },
+		{ name = "terrain_heightmap 16x16", requires = "Terrain.WriteVoxels", run = function(ctx)
+			local heights = {}
+			for z = 1, 16 do
+				heights[z] = {}
+				for x = 1, 16 do
+					heights[z][x] = 4 + (x + z) % 3
+				end
+			end
+			local r = ctx.h.terrain_heightmap({ heights = heights, origin = { 0, 0, 0 }, cell = 4, material = "Grass" })
+			must(r and (r.ok ~= false), "terrain_heightmap failed: " .. ctx.encode(r))
+			ctx.clearTerrain()
+			return r
+		end },
+		{ name = "lighting_set", run = function(ctx)
+			-- uses the real parameters: { lighting = {Property = value}, time_of_day = hours }. The original values are saved and put back.
+			local saved = ctx.saveLighting()
+			local r = ctx.h.lighting_set({ lighting = { Brightness = 3 }, time_of_day = 14 })
+			must(r ~= nil, "no result")
+			local failed = {}
+			for _, c in ipairs(r.changed or {}) do
+				if string.find(tostring(c), "FAILED", 1, true) then
+					table.insert(failed, tostring(c))
+				end
+			end
+			ctx.restoreLighting(saved)
+			must(#failed == 0, "some lighting properties were rejected: " .. table.concat(failed, "; "))
+			return { changed = r.changed }
+		end },
+		{ name = "camera_set", run = function(ctx)
+			return ctx.h.camera_set({ position = { 20, 20, 20 }, look_at = { 0, 0, 0 } })
+		end },
+		{ name = "screenshot (reports the fallback honestly)", run = function(ctx)
+			local r = ctx.h.screenshot({})
+			must(r ~= nil, "no result")
+			-- A scene report instead of pixels is a fallback, not a failure, and must be labelled as such.
+			if r.scene_report ~= nil or r.png_b64 == nil then
+				return { fallback = true, kind = "scene report (no pixels)" }
+			end
+			return { kind = "png", bytes = #r.png_b64 }
+		end },
+		{ name = "snapshot save + restore + compare", run = function(ctx)
+			local before = ctx.countDescendants()
+			local snap = ctx.h.snapshot_save({ label = "selftest" })
+			ctx.h.create({ parent = ctx.root, class = "Part", name = "SelfTestExtra" })
+			local mutated = ctx.countDescendants()
+			must(mutated > before, "mutation did not change the tree (cannot test restore)")
+			ctx.h.snapshot_restore({ id = snap.id })
+			local after = ctx.countDescendants()
+			must(after == before, ("restore did not return to the saved state: before=%d, after restore=%d"):format(before, after))
+			return { before = before, mutated = mutated, after = after }
+		end },
+		{ name = "playtest start/stop with a print script and log read", requires = "StudioTestService", run = function(ctx)
+			ctx.h.write_script({ path = "ServerScriptService.__BlockyAISelfTestPrint", class = "Script", source = "print('SELFTEST_MARKER_42')\n" })
+			ctx.track("ServerScriptService.__BlockyAISelfTestPrint")
+			local s = ctx.h.playtest_start({ mode = "run", seconds = 4 })
+			must(s and s.started, "playtest_start did not start")
+			ctx.wait(6)
+			local logs = ctx.h.get_playtest_logs({})
+			ctx.h.playtest_stop({})
+			must(logs ~= nil, "no logs returned")
+			must(ctx.encode(logs):find("SELFTEST_MARKER_42", 1, true) ~= nil, "the marker line was not found in the playtest logs")
+			return { log_lines = #(logs.lines or logs) }
+		end },
+		{ name = "ChangeHistory undo", run = function(ctx)
+			local before = ctx.countDescendants()
+			ctx.h.create({ parent = ctx.root, class = "Part", name = "SelfTestUndo" })
+			ctx.undo()
+			local after = ctx.countDescendants()
+			must(after == before, ("undo did not revert the create: before=%d after=%d"):format(before, after))
+			return { before = before, after = after }
+		end },
+	}
+end
+
+return S
+end)()
+
 local Builder = (function()
 -- BlockyAI builder: turns ONE JSON spec into a whole instance hierarchy.
 -- Pure of plugin/UI code: it only needs Instance/Vector3/CFrame/Color3/Enum, so it is unit-tested against a mock engine.
@@ -1824,7 +2106,11 @@ function UI.build(widget: any, theme: Theme, labels: any?): any
 	h.focusToggle = mk("TextButton", { Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = theme.card2, BorderSizePixel = 0, Text = "", TextColor3 = theme.text, Font = Enum.Font.GothamBold, TextSize = 11, LayoutOrder = 4 }, set)
 	corner(h.focusToggle, 6)
 	h.version = mk("TextLabel", { Size = UDim2.new(1, 0, 0, 16), BackgroundTransparency = 1, Text = "", TextColor3 = theme.mute, Font = Enum.Font.Code, TextSize = 10, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 5 }, set)
-	h.disconnect = mk("TextButton", { Size = UDim2.new(1, 0, 0, 28), BackgroundColor3 = theme.red, BorderSizePixel = 0, Text = "DISCONNECT", TextColor3 = Color3.new(0, 0, 0), Font = Enum.Font.GothamBold, TextSize = 11, LayoutOrder = 6 }, set)
+	-- in-Studio self-test (no AI): runs the plugin's own handlers against the real engine and reports pass/fail with raw errors
+	h.selftest = mk("TextButton", { Size = UDim2.new(1, 0, 0, 28), BackgroundColor3 = theme.blue, BorderSizePixel = 0, Text = "RUN SELF-TEST", TextColor3 = Color3.new(0, 0, 0), Font = Enum.Font.GothamBold, TextSize = 11, LayoutOrder = 6 }, set)
+	corner(h.selftest, 6)
+	h.selftestOut = mk("TextLabel", { Size = UDim2.new(1, 0, 0, 120), BackgroundTransparency = 1, Text = "", TextColor3 = theme.mute, Font = Enum.Font.Code, TextSize = 10, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, TextWrapped = true, LayoutOrder = 7 }, set)
+	h.disconnect = mk("TextButton", { Size = UDim2.new(1, 0, 0, 28), BackgroundColor3 = theme.red, BorderSizePixel = 0, Text = "DISCONNECT", TextColor3 = Color3.new(0, 0, 0), Font = Enum.Font.GothamBold, TextSize = 11, LayoutOrder = 8 }, set)
 	corner(h.disconnect, 6)
 
 	-- "Blocky is building" overlay: three bouncing cubes + Stop
@@ -2605,6 +2891,174 @@ local function uploadShots(commandId: string)
 	table.clear(pendingShots)
 end
 
+-- ---------- command bridge wiring ----------
+local resultCache = Bridge.newCache(200)
+local function featureProbe(name: string): boolean
+	if name == "StudioTestService" then
+		return game:GetService("StudioTestService") ~= nil
+	elseif name == "ExecutePlayModeAsync" or name == "ExecuteRunModeAsync" then
+		return typeof((game:GetService("StudioTestService") :: any)[name]) == "function"
+	elseif name == "CaptureService" then
+		return game:GetService("CaptureService") ~= nil
+	elseif name == "Terrain.FillBlock" then
+		return typeof((workspace.Terrain :: any).FillBlock) == "function"
+	elseif name == "Terrain.WriteVoxels" then
+		return typeof((workspace.Terrain :: any).WriteVoxels) == "function"
+	elseif name == "ChangeHistoryService.Recording" then
+		return typeof((ChangeHistoryService :: any).TryBeginRecording) == "function"
+	elseif name == "Raycast" then
+		return typeof((workspace :: any).Raycast) == "function"
+	elseif name == "HttpService.RequestAsync" then
+		return typeof((HttpService :: any).RequestAsync) == "function"
+	elseif name == "Selection" then
+		return Selection ~= nil
+	end
+	return false
+end
+local bridgeEnv: any = {
+	handlers = handlers,
+	allowed = ALLOWED,
+	cache = resultCache,
+	playtestActive = function()
+		return testRunning
+	end,
+	ack = function(id: string)
+		post("plugin-ack", { command_id = id }, true)
+	end,
+	heartbeat = function(id: string)
+		post("plugin-ack", { command_id = id, heartbeat = true }, true)
+	end,
+	clock = os.clock,
+	spawn = task.spawn,
+	wait = task.wait,
+	beat_s = 10,
+}
+
+-- ---------- in-Studio self-test (no AI) ----------
+-- Builds everything under one root folder and removes it afterwards. Uses the plugin's REAL handlers against the REAL engine.
+local selfTestRunning = false
+local function runSelfTest()
+	if selfTestRunning then
+		return
+	end
+	if testRunning then
+		H.selftestOut.Text = "A playtest is running. Stop it first."
+		return
+	end
+	selfTestRunning = true
+	H.selftest.Text = "RUNNING..."
+	H.selftestOut.Text = ""
+	local rootName = "__BlockyAISelfTest"
+	local old = workspace:FindFirstChild(rootName)
+	if old then
+		old:Destroy()
+	end
+	local root = Instance.new("Folder")
+	root.Name = rootName
+	root.Parent = workspace
+	local tracked: { string } = {}
+	local Lighting = game:GetService("Lighting")
+	local function countDescendants(): number
+		return #workspace:GetDescendants() + #game:GetService("ServerScriptService"):GetDescendants() + #game:GetService("StarterGui"):GetDescendants()
+	end
+	local kitchenSink = { name = "SelfTestModel", class = "Model", children = {
+		{ name = "Base", class = "Part", size = { 8, 1, 8 }, position = { 0, 0.5, 0 }, material = "Concrete", color = "#808080" },
+		{ name = "Pillar", class = "Part", shape = "Cylinder", size = { 6, 2, 2 }, position = { 0, 4, 0 }, material = "Metal", color = "#B0B0B0" },
+		{ name = "Roof", class = "WedgePart", size = { 8, 2, 8 }, position = { 0, 8, 0 }, material = "Wood", color = "#8B5A2B" },
+		{ name = "Ball", class = "Part", shape = "Ball", size = { 3, 3, 3 }, position = { 5, 3, 0 }, material = "Neon", color = "#00A2FF" },
+		{ name = "Glass", class = "Part", size = { 4, 4, 0.5 }, position = { -5, 3, 0 }, material = "Glass", color = "#A0D8FF", transparency = 0.5 },
+		{ name = "Lamp", class = "Part", size = { 1, 1, 1 }, position = { 0, 10, 0 }, children = { { name = "Light", class = "PointLight", brightness = 2, range = 12 } } },
+	} }
+	local uiSpec = { name = "SelfTestGui", class = "ScreenGui", children = {
+		{ name = "Panel", class = "Frame", size = { 0, 240, 0, 120 }, position = { 0, 10, 0, 10 }, children = {
+			{ name = "Title", class = "TextLabel", text = "Self-test", size = { 1, 0, 0, 30 } },
+			{ name = "Go", class = "TextButton", text = "OK", size = { 0, 80, 0, 28 }, position = { 0, 10, 0, 50 } },
+		} },
+	} }
+	local ctx: any = {
+		root = "Workspace." .. rootName,
+		h = handlers,
+		kitchenSink = kitchenSink,
+		uiSpec = uiSpec,
+		encode = function(v: any): string
+			local ok, s = pcall(function()
+				return HttpService:JSONEncode(v)
+			end)
+			return ok and s or tostring(v)
+		end,
+		http = function(fn: string, body: any)
+			return post(fn, body, false)
+		end,
+		track = function(path: string)
+			table.insert(tracked, path)
+		end,
+		wait = task.wait,
+		countDescendants = countDescendants,
+		undo = function()
+			ChangeHistoryService:Undo()
+		end,
+		clearTerrain = function()
+			pcall(function()
+				workspace.Terrain:Clear()
+			end)
+		end,
+		saveLighting = function()
+			return { Brightness = Lighting.Brightness, ClockTime = Lighting.ClockTime }
+		end,
+		restoreLighting = function(saved: any)
+			for k, v in pairs(saved or {}) do
+				pcall(function()
+					(Lighting :: any)[k] = v
+				end)
+			end
+		end,
+		cleanup = function()
+			local errs = {}
+			for _, path in ipairs(tracked) do
+				local inst = resolve(path)
+				if inst then
+					local ok, e = pcall(function()
+						inst:Destroy()
+					end)
+					if not ok then
+						table.insert(errs, path .. ": " .. tostring(e))
+					end
+				end
+			end
+			pcall(function()
+				root:Destroy()
+			end)
+			local h = game:GetService("ServerScriptService"):FindFirstChild(HARNESS_NAME)
+			if h then
+				h:Destroy()
+			end
+			if #errs > 0 then
+				error(table.concat(errs, "; "))
+			end
+		end,
+	}
+	local features = Bridge.detect(featureProbe)
+	local report = SelfTest.run(SelfTest.steps(), ctx, features)
+	local lines = { string.format("%d passed, %d failed, %d skipped%s", report.passed, report.failed, report.skipped, report.cleaned and "" or ("  (CLEANUP FAILED: " .. tostring(report.cleanup_error) .. ")")) }
+	for _, st in ipairs(report.steps) do
+		table.insert(lines, string.format("[%s] %s%s", string.upper(st.status), st.name, st.error and (": " .. string.sub(st.error, 1, 90)) or ""))
+	end
+	H.selftestOut.Text = table.concat(lines, "\n")
+	H.selftest.Text = "RUN SELF-TEST"
+	local studioVersion = "unknown"
+	pcall(function()
+		studioVersion = (getfenv() :: any).version()
+	end)
+	local data, code = post("plugin-selftest", { studio_version = studioVersion, plugin_version = PLUGIN_VERSION, features = features, steps = report.steps }, true)
+	if not data then
+		H.selftestOut.Text = H.selftestOut.Text .. "\n(could not send the report to the server: " .. tostring(code) .. ")"
+	end
+	selfTestRunning = false
+end
+H.selftest.MouseButton1Click:Connect(function()
+	task.spawn(runSelfTest)
+end)
+
 local function loop()
 	if running then
 		return
@@ -2636,14 +3090,11 @@ local function loop()
 		for _, c in ipairs((data and data.commands) or {}) do
 			local label = tostring(c.type)
 			local row = H.activity.add("> " .. label, theme.text, theme.blue, nil)
-			local ok, res
-			if ALLOWED[c.type] and handlers[c.type] then
-				ok, res = pcall(handlers[c.type], c.payload or {})
-			else
-				ok, res = false, "command type not allowed: " .. label
-			end
+			-- Bridge.execute: idempotency cache (never runs the same command twice), playtest guard, ACK before work, heartbeat during it.
+			local outcome = Bridge.execute(bridgeEnv, c)
+			local ok, res = outcome.ok, (outcome.ok and outcome.result or outcome.error)
 			row.Stripe.BackgroundColor3 = ok and theme.green or theme.red
-			row.Text.Text = "> " .. label .. (ok and "  done" or ("  FAILED: " .. string.sub(tostring(res), 1, 140)))
+			row.Text.Text = "> " .. label .. (outcome.cached and "  (repeat: stored result)" or (ok and "  done" or ("  FAILED: " .. string.sub(tostring(res), 1, 140))))
 			for _, e in ipairs(editLog) do
 				H.editlog.add(string.format("[%s] %s %s", string.upper(tostring(e.source)), tostring(e.action), tostring(e.target)), theme.text, theme.violet, nil)
 			end
@@ -2675,7 +3126,13 @@ H.codeBox:GetPropertyChangedSignal("Text"):Connect(function()
 end)
 H.connect.MouseButton1Click:Connect(function()
 	local cleaned = string.upper((string.gsub(H.codeBox.Text or "", "%s", "")))
-	local data, code = post("plugin-pair", { code = cleaned, place_name = game.Name ~= "" and game.Name or "Untitled place" }, false)
+	local features = Bridge.detect(featureProbe)
+	local studioVersion = "unknown"
+	-- version() is flagged deprecated by the analyzer but is still the only call that returns the Studio build string; a failure just reports "unknown".
+	pcall(function()
+		studioVersion = (getfenv() :: any).version()
+	end)
+	local data, code = post("plugin-pair", { code = cleaned, place_name = game.Name ~= "" and game.Name or "Untitled place", studio_version = studioVersion, features = features, plugin_version = PLUGIN_VERSION }, false)
 	if data and data.token then
 		token = data.token
 		plugin:SetSetting("blockyai_token", token)
