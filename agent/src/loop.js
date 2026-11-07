@@ -24,6 +24,7 @@ export const toolFamily = (name) => (String(name).startsWith("roblox_") ? "roblo
 // ---- never stop early ----
 export const MAX_GATE_REJECTIONS = 6;
 export const MAX_CONSECUTIVE_FAILURES = 4;
+export const MAX_PARSE_FAILURES = 3;     // consecutive replies whose tool call could not be parsed; they do NOT count toward MAX_CONSECUTIVE_FAILURES
 // These mean nothing more can be done by trying again, so the run ends and the raw error is shown.
 export const HARD_FAILURE = /plugin not responding|plugin did not respond|waiting for user confirmation|LLM error|http 401|invalid or expired token|VM is not running/i;
 export const DEFAULT_BUILD_ITERATIONS = 40;
@@ -105,56 +106,16 @@ export function attachmentContext(list) {
   }).join("\n");
 }
 
-const TOOL_RE = /<tool>/i;
-// Pull the first balanced {...} object out of text, respecting strings and escapes.
-function firstObject(text) {
-  const start = text.indexOf("{"); if (start < 0) return null;
-  let depth = 0, inStr = false, esc = false;
-  for (let i = start; i < text.length; i++) {
-    const c = text[i];
-    if (inStr) { if (esc) esc = false; else if (c === "\\") esc = true; else if (c === '"') inStr = false; continue; }
-    if (c === '"') inStr = true;
-    else if (c === "{") depth++;
-    else if (c === "}") { depth--; if (depth === 0) return { json: text.slice(start, i + 1), start, end: i + 1 }; }
-  }
-  return null;
-}
-// Accepts: <tool>{..}</tool>, <tool>```json {..} ```</tool>, <tool>{..} with NO closing tag, or a bare ```json {"name":..}``` block.
-export function parseTool(text) {
-  let body = null;
-  const tagAt = text.search(TOOL_RE);
-  if (tagAt >= 0) body = text.slice(tagAt + 6);
-  else { const f = text.match(/```(?:json)?\s*(\{[\s\S]*?"name"\s*:\s*"roblox_[\s\S]*)/i); if (f) body = f[1]; }
-  if (body == null) return null;
-  body = body.replace(/<\/tool>[\s\S]*$/i, "");
-  const obj = firstObject(body); if (!obj) return null;
-  const s = obj.json;
-  for (const attempt of [s, s.replace(/,\s*([}\]])/g, "$1"), s.replace(/[\u201c\u201d]/g, '"')]) {
-    try { const j = JSON.parse(attempt); if (j && typeof j.name === "string") return { name: j.name, args: j.args ?? j.arguments ?? {} }; } catch {}
-  }
-  return null;
-}
-// Every tool call in one reply, in order. Lets the model do many things per (slow) model call.
-export function parseTools(text) {
-  const calls = []; let rest = text;
-  for (let n = 0; n < 8; n++) {
-    const first = parseTool(rest); if (!first) break;
-    calls.push(first);
-    // advance past this call so the next one can be found
-    const tagAt = rest.search(TOOL_RE);
-    const from = tagAt >= 0 ? tagAt + 6 : rest.search(/```/);
-    const obj = firstObject(rest.slice(from)); if (!obj) break;
-    rest = rest.slice(from + obj.end).replace(/^[\s`]*(json)?[\s`]*(<\/tool>)?/i, "");
-    if (!/<tool>|"name"\s*:\s*"roblox_/i.test(rest)) break;
-  }
-  return calls;
-}
-// The visible text = everything before the tool call.
+import { parseReply, MAX_CALLS_PER_REPLY } from "./toolparse.js";
+export { parseReply, MAX_CALLS_PER_REPLY };
+// Back-compatible wrappers. The real work (raw-body form, JSON form, bare fence, error positions, 6-call cap) is in toolparse.js.
+export const parseTools = (text) => parseReply(text).calls.map(({ name, args }) => ({ name, args }));
+export const parseTool = (text) => parseTools(text)[0] ?? null;
+// The visible text = everything before the first tool call.
 export function stripTool(text) {
-  const tagAt = text.search(TOOL_RE);
-  if (tagAt >= 0) return text.slice(0, tagAt).trim();
-  const f = text.search(/```(?:json)?\s*\{[\s\S]*?"name"\s*:\s*"roblox_/i);
-  return f >= 0 ? text.slice(0, f).trim() : text.trim();
+  const t = String(text ?? "");
+  const at = t.search(/<tool\b|```(?:json)?\s*\{[\s\S]*?"name"\s*:\s*"(?:roblox_|vm_|plan_|build_|local_)/i);
+  return (at >= 0 ? t.slice(0, at) : t).trim();
 }
 // Game-derived text is wrapped so the model treats it as data, and any attempt to close the wrapper is neutralised.
 export function wrapUntrusted(v) {
@@ -163,7 +124,7 @@ export function wrapUntrusted(v) {
 }
 
 export async function handleUserMessage(history, userText, { maxIterations = 12, llm = api.llm, tools = TOOLS, say = api.say, update = api.update, shouldStop = async () => false, log = (r) => api.logToolCall(r), messageId = null } = {}) {
-  const runId = randomUUID(); let seq = 0; let gateRejections = 0, consecutiveFailures = 0, lastFailure = null;
+  const runId = randomUUID(); let seq = 0; let gateRejections = 0, consecutiveFailures = 0, lastFailure = null, parseFailures = 0;
   const msgs = [{ role: "system", content: SYSTEM }, ...history, { role: "user", content: userText }];   // userText already includes any <attachment> context
   const cards = [];
   let liveId = null;
@@ -172,8 +133,22 @@ export async function handleUserMessage(history, userText, { maxIterations = 12,
     const r = await llm(msgs);
     if (r.error) { await say("assistant", `LLM error: ${r.error}`, null, "error"); return; }
     const text = r.content || "";
-    const calls = parseTools(text);
+    const parsed = parseReply(text);
+    const calls = parsed.calls;
     const thought = stripTool(text);
+    // A reply that TRIED to call a tool but could not be parsed is never a final answer. Tell the model exactly what is wrong and let it resend.
+    if (!calls.length && parsed.attempted) {
+      parseFailures++;
+      if (parseFailures >= MAX_PARSE_FAILURES) {
+        await say("assistant", `INCOMPLETE. I could not make a valid tool call after ${parseFailures} tries, so I stopped without finishing. Last problem: ${parsed.errors[0]?.message ?? "unparseable tool call"}`, cards.length ? cards : null, "incomplete", [{ type: "warning", title: "Incomplete: tool call could not be parsed", body: (parsed.errors[0]?.message ?? "").slice(0, 300) }]);
+        return;
+      }
+      msgs.push({ role: "assistant", content: text });
+      msgs.push({ role: "user", content: `Your tool call could not be parsed (${parseFailures}/${MAX_PARSE_FAILURES}): ${parsed.errors.map((e) => e.message).join(" | ").slice(0, 600)}\nNothing was run. Resend the call. For scripts and big specs use the raw-body form: <tool name="roblox_write_script" path="..." class="Script"><source>...raw Lua...</source></tool> or <tool name="build_model" parent="Workspace"><spec>{...}</spec></tool>.` });
+      continue;
+    }
+    parseFailures = 0;
+    if (parsed.cappedAt != null) msgs.push({ role: "user", content: `NOTE: you sent more than ${MAX_CALLS_PER_REPLY} tool calls; only the first ${MAX_CALLS_PER_REPLY} were run. Send the rest in your next reply.` });
     if (!calls.length) {
       // FINISH GATE. The model wants to stop. The server (not the model) decides whether the work is really complete:
       // every plan item done, something verified, and the build target is not an empty container.
