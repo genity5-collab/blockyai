@@ -1,7 +1,7 @@
 import { authAgent, handle, json } from "../_shared/lib.ts";
 
 // Plans live on the SERVER so the agent cannot talk its way out of unfinished work. The agent loop asks this function
-// "may I finish?" and obeys the answer. Actions: create | update | get | can_finish.
+// "may I finish?" and obeys the answer. Actions: create | update | get | can_finish | begin_turn | abandon.
 const MAX_ITEMS = 30;
 const clip = (v: unknown, n: number) => String(v ?? "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "").slice(0, n);
 
@@ -69,6 +69,17 @@ Deno.serve(handle(async (req) => {
     if (b.target_path) plan.target_path = clip(b.target_path, 200);
     const { data } = await db.from("agent_plans").update({ items, target_path: plan.target_path, updated_at: new Date().toISOString() }).eq("id", plan.id).select().single();
     return json({ ok: true, plan: data });
+  }
+
+  // A new user turn starts: any plan from an EARLIER message is stale and must never gate this one.
+  if (action === "begin_turn") {
+    const { data } = await db.from("agent_plans").update({ status: "abandoned", updated_at: new Date().toISOString() }).eq("session_id", session.id).eq("status", "active").select("id");
+    return json({ ok: true, abandoned: data?.length ?? 0 });
+  }
+  // The run ended without finishing (INCOMPLETE, iteration cap, Stop): the plan is closed so it cannot gate an unrelated later message.
+  if (action === "abandon") {
+    const { data } = await db.from("agent_plans").update({ status: "abandoned", updated_at: new Date().toISOString() }).eq("session_id", session.id).eq("status", "active").select("id");
+    return json({ ok: true, abandoned: data?.length ?? 0 });
   }
 
   if (action === "get") return json({ plan: await active() });

@@ -148,6 +148,8 @@ Deno.serve(handle(async (req) => {
       await db.from("sessions").update({ agent_state: "idle", last_active_at: new Date().toISOString() }).eq("id", session.id);
       await db.from("messages").insert({ session_id: session.id, role: "system", content: "__STOP__" });
       await db.from("commands").update({ status: "cancelled", error: "stopped by user", finished_at: new Date().toISOString() }).eq("session_id", session.id).in("status", ["queued", "claimed", "running"]);
+      // Same as the plugin's Stop button: a stopped run's plan must never gate the next message.
+      await db.from("agent_plans").update({ status: "abandoned", updated_at: new Date().toISOString() }).eq("session_id", session.id).eq("status", "active");
       return json({ ok: true });
     }
     case "send_message": {

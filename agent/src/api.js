@@ -17,8 +17,8 @@ async function call(path, opts = {}) {
 }
 export const api = {
   messagesAfter: (after) => call(`agent-messages?after=${encodeURIComponent(after)}`),
-  say: (role, content, tool_calls, state, embeds) => call("agent-messages", { method: "POST", body: JSON.stringify({ role, content, tool_calls, state, embeds }) }),
-  update: (id, content, tool_calls, embeds, state) => call("agent-messages", { method: "POST", body: JSON.stringify({ id, content, tool_calls, embeds, state }) }),
+  say: (role, content, tool_calls, state, embeds, outcome) => call("agent-messages", { method: "POST", body: JSON.stringify({ role, content, tool_calls, state, embeds, outcome }) }),
+  update: (id, content, tool_calls, embeds, state, outcome) => call("agent-messages", { method: "POST", body: JSON.stringify({ id, content, tool_calls, embeds, state, outcome }) }),
   attachments: (ids) => call(`agent-data?kind=attachments&ids=${ids.join(",")}`),
   setState: (state) => call("agent-messages", { method: "POST", body: JSON.stringify({ state }) }),
   command: (type, payload, idempotency_key) => call("agent-command", { method: "POST", body: JSON.stringify({ type, idempotency_key, payload }) }),

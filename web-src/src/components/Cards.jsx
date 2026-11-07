@@ -30,3 +30,15 @@ export function BatchCard({ cmd }) {
       <div className="segs" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done}>{Array.from({ length: Math.min(total, 40) }, (_, i) => <i key={i} className={cx(i < done && "on", i === done && cmd.status === "running" && "cur", cmd.status === "failed" && i === done && "bad")} style={{ transitionDelay: i * 25 + "ms" }} />)}</div>
     </div>);
 }
+
+// How a run ended. Only these exact values render; anything else (old messages, junk) shows nothing. The label is fixed text, never the message content.
+const OUTCOMES = {
+  incomplete: { label: "INCOMPLETE", hint: "The agent stopped before the work was verified. Treat what it built as unfinished." },
+  stopped: { label: "Stopped", hint: "You stopped this run." },
+  error: { label: "Error", hint: "The run ended because of an error." },
+};
+export function OutcomeBadge({ outcome }) {
+  const o = Object.prototype.hasOwnProperty.call(OUTCOMES, outcome) ? OUTCOMES[outcome] : null;
+  if (!o) return null;
+  return <div className={"outcome outcome-" + outcome} title={o.hint} role="status"><b>{o.label}</b><span>{o.hint}</span></div>;
+}

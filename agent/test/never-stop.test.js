@@ -32,7 +32,7 @@ test("finishGate(): unreadable target sends null (does not fake a count)", async
 import { api } from "../src/api.js";
 test("LOOP: 'I'm done' is rejected until the server agrees, then it finishes", async () => {
   const realPlan = api.plan; const posted = []; const prompts = []; let canFinishCalls = 0;
-  api.plan = async (action) => { if (action === "get") return { plan: { target_path: null } }; canFinishCalls++; return canFinishCalls < 3 ? { ok: false, reasons: ["1 checklist item(s) are not done: #4 verify"] } : { ok: true, reasons: [] }; };
+  api.plan = async (action) => { if (action === "get") return { plan: { target_path: null } }; if (action !== "can_finish") return { ok: true }; canFinishCalls++; return canFinishCalls < 3 ? { ok: false, reasons: ["1 checklist item(s) are not done: #4 verify"] } : { ok: true, reasons: [] }; };
   try {
     let n = 0;
     await handleUserMessage([], "build", { llm: async (m) => { prompts.push(m.at(-1).content); n++; return { content: "I am done." }; }, tools: {}, say: mkSay(posted), update: async () => {}, log: () => {}, maxIterations: 10 });
@@ -52,7 +52,8 @@ test("LOOP: after the max rejections it stops and states the unfinished reasons 
   } finally { api.plan = realPlan; }
 });
 test("LOOP: a recoverable tool failure goes back to the model and the build continues", async () => {
-  const realPlan = api.plan; api.plan = async () => ({ plan: null }); const posted = []; const prompts = []; let k = 0;
+  // Item 6: a turn that changed the game needs a plan to finish. The fixture supplies one the server accepts; the assertions below are unchanged.
+  const realPlan = api.plan; api.plan = async (action) => (action === "get" ? { plan: { id: "p", items: [], target_path: null } } : action === "can_finish" ? { ok: true, reasons: [] } : { ok: true }); const posted = []; const prompts = []; let k = 0;
   try {
     const tools = { roblox_write_script: { fn: async () => (k++ === 0 ? { ok: false, error: "NOT pushed. Analysis failed: (3,1) SyntaxError" } : { ok: true, result: "pushed" }) } };
     let n = 0;

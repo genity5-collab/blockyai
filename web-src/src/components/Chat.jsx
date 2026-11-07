@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Send, Camera, Play, Wrench, Hammer, MousePointerClick, Cuboid, Paperclip, X, FileText, Square, Loader2, Upload } from "lucide-react";
-import { useApp } from "../lib/store.jsx"; import { cx } from "../lib/util.js"; import { CommandCard, BatchCard } from "./Cards.jsx"; import ConfirmModal from "./ConfirmModal.jsx"; import Embeds from "./Embeds.jsx"; import { PlanCard, ShotStrip, ModeSwitch } from "./Build.jsx";
+import { useApp } from "../lib/store.jsx"; import { cx } from "../lib/util.js"; import { CommandCard, BatchCard, OutcomeBadge } from "./Cards.jsx"; import ConfirmModal from "./ConfirmModal.jsx"; import Embeds from "./Embeds.jsx"; import { PlanCard, ShotStrip, ModeSwitch } from "./Build.jsx";
 
 function Typewriter({ text, live }) {
   const [n, setN] = useState(live ? 0 : text.length); const ref = useRef(text);
@@ -59,6 +59,7 @@ export default function Chat() {
               {m.content && <div className="txt"><Typewriter text={m.content} live={!first.current && !seen.current.has(m.id)} /></div>}
               {cmdsFor(m).map((c, i) => c.type === "batch" ? <BatchCard key={c.id || i} cmd={c} /> : <CommandCard key={c.id || i} cmd={c} />)}
               <Embeds list={m.embeds} />
+              <OutcomeBadge outcome={m.outcome} />
             </div></div>))}
         <PlanCard /><ShotStrip />
         {thinking && <div className="msg ai"><div className="av"><Cuboid size={18} /></div><div className="bub ai-b"><div className="bounce" aria-label="Blocky is thinking"><i /><i /><i /></div></div></div>}

@@ -3,6 +3,8 @@ import { authAgent, handle, json } from "../_shared/lib.ts";
 // Embeds are DATA the website renders. Only these shapes are accepted; every string is length-capped.
 const KINDS = new Set(["info", "tip", "warning", "success", "steps", "code", "table", "checklist"]);
 const str = (v: unknown, n: number) => String(v ?? "").slice(0, n);
+const OUTCOMES = new Set(["complete", "incomplete", "stopped", "error"]);
+const outcomeOf = (v: unknown) => (OUTCOMES.has(String(v)) ? String(v) : null);
 export function cleanEmbeds(raw: unknown) {
   if (!Array.isArray(raw)) return null;
   const out: any[] = [];
@@ -28,11 +30,11 @@ Deno.serve(handle(async (req) => {
   const b = await req.json();
   if (b.state) await db.from("sessions").update({ agent_state: b.state, last_active_at: new Date().toISOString() }).eq("id", session.id);
   if (b.id) { // streaming update of an existing message
-    const { data } = await db.from("messages").update({ content: b.content, tool_calls: b.tool_calls, ...(b.embeds !== undefined ? { embeds: cleanEmbeds(b.embeds) } : {}) }).eq("id", b.id).eq("session_id", session.id).select().single();
+    const { data } = await db.from("messages").update({ content: b.content, tool_calls: b.tool_calls, ...(b.embeds !== undefined ? { embeds: cleanEmbeds(b.embeds) } : {}), ...(b.outcome !== undefined ? { outcome: outcomeOf(b.outcome) } : {}) }).eq("id", b.id).eq("session_id", session.id).select().single();
     return json(data);
   }
   if (b.content === undefined) return json({ ok: true });
   if (!["assistant","tool","system"].includes(b.role)) return json({ error: "bad role" }, 400);
-  const { data } = await db.from("messages").insert({ session_id: session.id, role: b.role, content: b.content, tool_calls: b.tool_calls ?? null, embeds: cleanEmbeds(b.embeds) }).select().single();
+  const { data } = await db.from("messages").insert({ session_id: session.id, role: b.role, content: b.content, tool_calls: b.tool_calls ?? null, embeds: cleanEmbeds(b.embeds), outcome: outcomeOf(b.outcome) }).select().single();
   return json(data);
 }));

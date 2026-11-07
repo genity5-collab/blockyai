@@ -3,7 +3,7 @@ import test from "node:test"; import assert from "node:assert/strict";
 import { parseTools, handleUserMessage } from "../src/loop.js";
 
 const said = []; const mkApi = () => { said.length = 0; return {
-  say: async (role, content, cards, state, embeds) => { said.push({ role, content, state, embeds }); return { id: "m" + said.length }; },
+  say: async (role, content, cards, state, embeds, outcome) => { said.push({ role, content, state, embeds, outcome }); return { id: "m" + said.length }; },
   update: async () => ({}), log: () => {},
 }; };
 const scripted = (replies) => { let i = 0; const seen = []; const f = async (msgs) => { seen.push(msgs.map((m) => m.content)); return { content: replies[Math.min(i++, replies.length - 1)] }; }; f.seen = seen; f.calls = () => i; return f; };
@@ -24,7 +24,7 @@ test("[mock] item 1: 3 consecutive parse failures end the run as INCOMPLETE, nev
   const bad = '<tool>{"name":"roblox_get_tree","args":{';
   const { said, llm } = await run([bad, bad, bad, bad, bad]);
   assert.equal(llm.calls(), 3, "must stop after exactly 3 consecutive parse failures");
-  const last = said[said.length - 1]; assert.equal(last.state, "incomplete"); assert.match(last.content, /INCOMPLETE|could not|parse/i);
+  const last = said[said.length - 1]; assert.equal(last.outcome, "incomplete"); assert.equal(last.state, "idle", "the session busy-lock must still release"); assert.match(last.content, /INCOMPLETE|could not|parse/i);
 });
 test("[mock] item 1: parse failures do NOT count toward the tool-failure limit", async () => {
   const bad = '<tool>{"name":"roblox_get_tree","args":{';

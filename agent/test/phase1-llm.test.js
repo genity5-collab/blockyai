@@ -15,7 +15,7 @@ test("[mock] shapeCompletion never throws on junk and reports finish_reason 'unk
 test("[mock] max_tokens: configurable, clamped to a hard ceiling, default when invalid", () => {
   assert.equal(clampMaxTokens(8000), 8000); assert.equal(clampMaxTokens(999999), HARD_MAX_TOKENS); assert.equal(clampMaxTokens(undefined), DEFAULT_MAX_TOKENS); assert.equal(clampMaxTokens(-5), DEFAULT_MAX_TOKENS); assert.equal(clampMaxTokens("abc"), DEFAULT_MAX_TOKENS);
 });
-const said = []; const API = { say: async (r, c, cards, st) => (said.push({ c, st }), { id: "m" }), update: async () => ({}), log: () => {} };
+const said = []; const API = { say: async (r, c, cards, st, emb, outcome) => (said.push({ c, st, outcome }), { id: "m" }), update: async () => ({}), log: () => {} };
 test("[mock] a reply cut off by the length limit is NOT treated as a finished answer; the model is told and can split the work", async () => {
   said.length = 0; const seen = []; let i = 0;
   const replies = [{ content: 'Writing.\n<tool name="roblox_write_script" path="A.B"><source>\nlocal x = 1\nlocal y = ', finish_reason: "length" }, { content: "All done.", finish_reason: "stop" }];
@@ -51,5 +51,5 @@ test("[mock] a call that ends the reply but was properly closed AND finish_reaso
 test("[mock] 3 truncations in a row that produce nothing runnable end as INCOMPLETE", async () => {
   said.length = 0; let i = 0;
   await handleUserMessage([], "go", { llm: async () => (i++, { content: '<tool name="roblox_write_script" path="A"><source>\nlocal a =', finish_reason: "length" }), tools: {}, ...API, shouldStop: async () => false });
-  assert.equal(i, 3); assert.equal(said[said.length - 1].st, "incomplete");
+  assert.equal(i, 3); assert.equal(said[said.length - 1].outcome, "incomplete"); assert.equal(said[said.length - 1].st, "idle");
 });

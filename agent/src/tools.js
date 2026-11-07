@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
 import { ScriptGuard, windowText, sha as contentSha } from "./scriptguard.js";
+import { currentTurn } from "./lifecycle.js";
 export const scriptGuard = new ScriptGuard();
 export const deps = { lint: null };            // tests only: replace the linter where luau-lsp/stylua are not installed. Production leaves it null.
 const sh = promisify(execFile);
@@ -263,7 +264,7 @@ export const TOOLS = {
   vm_write_file:          { args: "{path, content}  write a file on the VM; verified by reading it back", fn: (a) => vmWrite(a.path, a.content) },
   plan_create:            { args: "{title, items:[string,...] (2..30), target_path?}  REQUIRED before any build. The numbered checklist is shown live to the user. target_path = the model/area you are building (e.g. \"Workspace.Yacht\"); the server refuses to let you finish if it has fewer than 5 descendants.", fn: async (a) => {
       if (!Array.isArray(a.items) || a.items.length < 2) return { ok: false, error: "items must be a list of at least 2 checklist steps" };
-      const r = await api.plan("create", { title: a.title, items: a.items, target_path: a.target_path });
+      const r = await api.plan("create", { title: a.title, items: a.items, target_path: a.target_path, message_id: currentTurn.messageId });
       return r?.error ? { ok: false, error: r.error } : { ok: true, result: { plan_id: r.plan.id, items: r.plan.items.map((i) => `#${i.id} ${i.text}`), note: "Work through the items in order. Tick each with plan_update. The last items must be verification (screenshots/playtest)." } }; } },
   plan_update:            { args: "{updates:[{id, done?, verified?, note?}], add_items?:[string], target_path?}  tick items as you finish them; verified:true only after you actually checked (screenshot/playtest)", fn: async (a) => {
       const r = await api.plan("update", { updates: a.updates, add_items: a.add_items, target_path: a.target_path });

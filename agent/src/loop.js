@@ -33,10 +33,12 @@ export const HARD_ITERATION_CAP = 80;
 export const clampIterations = (n, fallback = DEFAULT_BUILD_ITERATIONS) => Math.max(4, Math.min(Number.isFinite(+n) && +n > 0 ? Math.floor(+n) : fallback, HARD_ITERATION_CAP));
 
 // Ask the server whether the agent may finish. Counts the target's descendants through Studio so an empty container cannot pass.
-export async function finishGate({ api, tools }) {
+export async function finishGate({ api, tools, requirePlan = false }) {
   let plan;
   try { plan = (await api.plan("get"))?.plan; } catch { return { ok: true, reasons: [] }; }            // plan service down: do not trap the agent forever
-  if (!plan) return { ok: true, reasons: [] };                                                       // plain chat answer, no plan to enforce
+  if (!plan) return requirePlan
+    ? { ok: false, reasons: ["you changed the game but made no plan. Call plan_create (a checklist of 2+ steps, ending with verification) before you finish."] }
+    : { ok: true, reasons: [] };                                                                     // no plan and nothing was built: a plain chat answer
   let n = null;
   if (plan.target_path && tools.roblox_find) {
     const r = await tools.roblox_find.fn({ under: plan.target_path }).catch(() => null);
@@ -108,6 +110,7 @@ export function attachmentContext(list) {
 }
 
 import { parseReply, MAX_CALLS_PER_REPLY } from "./toolparse.js";
+import { isMutatingTool, currentTurn } from "./lifecycle.js";
 export { parseReply, MAX_CALLS_PER_REPLY };
 // Back-compatible wrappers. The real work (raw-body form, JSON form, bare fence, error positions, 6-call cap) is in toolparse.js.
 export const parseTools = (text) => parseReply(text).calls.map(({ name, args }) => ({ name, args }));
@@ -128,15 +131,24 @@ export function wrapUntrusted(v) {
   return `<untrusted_game_data>\n${t}\n</untrusted_game_data>`;
 }
 
-export async function handleUserMessage(history, userText, { maxIterations = 12, llm = api.llm, tools = TOOLS, say = api.say, update = api.update, shouldStop = async () => false, log = (r) => api.logToolCall(r), logLlm = (r) => api.logLlm(r), messageId = null } = {}) {
+export async function handleUserMessage(history, userText, { maxIterations = 12, llm = api.llm, tools = TOOLS, say = api.say, update = api.update, shouldStop = async () => false, log = (r) => api.logToolCall(r), logLlm = (r) => api.logLlm(r), planApi = (action, body) => api.plan(action, body), messageId = null } = {}) {
   const runId = randomUUID(); let seq = 0; let gateRejections = 0, consecutiveFailures = 0, lastFailure = null, parseFailures = 0, consecutiveTruncations = 0;
   const msgs = [{ role: "system", content: SYSTEM }, ...history, { role: "user", content: userText }];   // userText already includes any <attachment> context
   const cards = [];
   let liveId = null;
+  let mutated = false;                                   // did ANY tool this turn change the game? decides whether the finish gate applies
+  currentTurn.messageId = messageId;
+  // Every exit goes through here, so every final message carries an outcome and a plan that did not finish is closed.
+  const finish = async (outcome, content, { state = "idle", embeds = null, showCards = true } = {}) => {
+    if (outcome !== "complete") { try { await planApi("abandon", {}); } catch {} }
+    await say("assistant", content, showCards && cards.length ? cards : null, state, embeds, outcome);
+  };
+  // A new user turn: a plan left over from an EARLIER message must never gate this one.
+  try { await planApi("begin_turn", { message_id: messageId }); } catch {}
   for (let i = 1; i <= maxIterations; i++) {
-    if (await shouldStop()) { await say("assistant", "Stopped. Tell me what to do next.", cards.length ? cards : null, "idle"); return; }
+    if (await shouldStop()) { await finish("stopped", "Stopped. Tell me what to do next."); return; }
     const r = await llm(msgs);
-    if (r.error) { await say("assistant", `LLM error: ${r.error}`, null, "error"); return; }
+    if (r.error) { await finish("error", `LLM error: ${r.error}`, { state: "error", showCards: false }); return; }
     const text = r.content || "";
     const truncated = r.truncated === true || r.finish_reason === "length";
     // Audit every model call so truncation, token use and iteration count are visible (never lets logging break a run).
@@ -150,14 +162,14 @@ export async function handleUserMessage(history, userText, { maxIterations = 12,
     if (truncated) {
       msgs.push({ role: "assistant", content: text });
       msgs.push({ role: "user", content: `Your last reply was CUT OFF by the output length limit (finish_reason=length), so the end of it was lost${calls.length ? `; only the ${calls.length} complete tool call(s) before the cut were run` : " and nothing was run"}. Do not repeat the same long output. Split the work: smaller build_model specs (one section per call), or smaller scripts in separate modules, and use the raw-body form (<source>...</source>, <spec>...</spec>).` });
-      if (!calls.length) { consecutiveTruncations++; if (consecutiveTruncations >= MAX_TRUNCATIONS) { await say("assistant", "INCOMPLETE. My output was cut off by the length limit " + consecutiveTruncations + " times in a row, so I stopped. Ask me for a smaller piece at a time.", cards.length ? cards : null, "incomplete"); return; } continue; }
+      if (!calls.length) { consecutiveTruncations++; if (consecutiveTruncations >= MAX_TRUNCATIONS) { await finish("incomplete", "INCOMPLETE. My output was cut off by the length limit " + consecutiveTruncations + " times in a row, so I stopped. Ask me for a smaller piece at a time."); return; } continue; }
     } else consecutiveTruncations = 0;
     const thought = stripTool(text);
     // A reply that TRIED to call a tool but could not be parsed is never a final answer. Tell the model exactly what is wrong and let it resend.
     if (!calls.length && parsed.attempted) {
       parseFailures++;
       if (parseFailures >= MAX_PARSE_FAILURES) {
-        await say("assistant", `INCOMPLETE. I could not make a valid tool call after ${parseFailures} tries, so I stopped without finishing. Last problem: ${parsed.errors[0]?.message ?? "unparseable tool call"}`, cards.length ? cards : null, "incomplete", [{ type: "warning", title: "Incomplete: tool call could not be parsed", body: (parsed.errors[0]?.message ?? "").slice(0, 300) }]);
+        await finish("incomplete", `INCOMPLETE. I could not make a valid tool call after ${parseFailures} tries, so I stopped without finishing. Last problem: ${parsed.errors[0]?.message ?? "unparseable tool call"}`, { embeds: [{ type: "warning", title: "Incomplete: tool call could not be parsed", body: (parsed.errors[0]?.message ?? "").slice(0, 300) }] });
         return;
       }
       msgs.push({ role: "assistant", content: text });
@@ -167,23 +179,27 @@ export async function handleUserMessage(history, userText, { maxIterations = 12,
     parseFailures = 0;
     if (parsed.cappedAt != null) msgs.push({ role: "user", content: `NOTE: you sent more than ${MAX_CALLS_PER_REPLY} tool calls; only the first ${MAX_CALLS_PER_REPLY} were run. Send the rest in your next reply.` });
     if (!calls.length) {
-      // FINISH GATE. The model wants to stop. The server (not the model) decides whether the work is really complete:
-      // every plan item done, something verified, and the build target is not an empty container.
-      const gate = await finishGate({ api, tools });
+      // FINISH GATE. The server (not the model) decides whether the work is really complete. It is NOT opt-in:
+      //  - a turn where something changed the game MUST have a plan; no plan = rejected, the model is told to plan_create.
+      //  - a pure chat / read-only turn (nothing mutated, no plan) has nothing to enforce. If a plan exists the gate ALWAYS applies.
+      //  - after MAX_GATE_REJECTIONS the run ends INCOMPLETE with the unmet conditions listed. It is never passed as success.
+      // The OLD gate (an active plan must be complete and verified) always applies when a plan exists; this is never weakened.
+      // The NEW rule only adds: if the game changed, a plan must exist. A chat turn with no plan and no mutation skips it.
+      const gate = await finishGate({ api: { plan: planApi }, tools, requirePlan: mutated });
       if (!gate.ok && gateRejections < MAX_GATE_REJECTIONS) {
         gateRejections++;
         msgs.push({ role: "assistant", content: text });
-        msgs.push({ role: "user", content: `FINISH REJECTED by the server (${gateRejections}/${MAX_GATE_REJECTIONS}). You are not done:\n- ${gate.reasons.join("\n- ")}\nContinue working. Call plan_update as you complete and verify items, and only finish when this list is empty.` });
+        msgs.push({ role: "user", content: `FINISH REJECTED by the server (${gateRejections}/${MAX_GATE_REJECTIONS}). You are not done:\n- ${gate.reasons.join("\n- ")}\nContinue working. Call plan_update as you complete and verify items (a plan is required for any build or edit: call plan_create first if you have none).` });
         if (liveId) await update(liveId, `Not finished yet: ${gate.reasons[0]}`.slice(0, 300), cards);
         continue;
       }
       if (!gate.ok) {
         const { text: clean0 } = parseEmbeds(thought);
-        await say("assistant", `${clean0 || "(no answer)"}\n\nI could not finish this properly. The server still reports:\n- ${gate.reasons.join("\n- ")}`, cards.length ? cards : null, "idle", [{ type: "warning", title: "Unfinished", body: gate.reasons.join(" ").slice(0, 400) }]);
+        await finish("incomplete", `INCOMPLETE. ${clean0 || "(no answer)"}\n\nI could not finish this properly after ${MAX_GATE_REJECTIONS} rejections. Unmet conditions:\n- ${gate.reasons.join("\n- ")}`, { embeds: [{ type: "warning", title: "Unfinished", body: gate.reasons.join(" | ").slice(0, 700) }] });
         return;
       }
       const { text: clean, embeds } = parseEmbeds(thought);
-      await say("assistant", clean || "(no answer)", cards.length ? cards : null, "idle", embeds);
+      await finish("complete", clean || "(no answer)", { embeds });
       return;
     }
     const results = []; let failure = null;
@@ -194,6 +210,7 @@ export async function handleUserMessage(history, userText, { maxIterations = 12,
       cards.push(card);
       if (!liveId) { const m = await say("assistant", thought || "Working...", cards, "working"); liveId = m?.id; } else await update(liveId, thought || "Working...", cards);
       let out;
+      if (isMutatingTool(call.name)) mutated = true;       // even a failed attempt counts: the game may have changed
       if (!t) out = { ok: false, error: `unknown tool ${call.name}` };
       else { try { out = await t.fn(call.args ?? {}); } catch (e) { out = { ok: false, error: String(e.message).slice(0, 300) }; } }
       // Audit log: name, short args, duration, success/error. The server decides the family (vm / roblox) from the name. Logging can never break a run.
@@ -209,7 +226,7 @@ export async function handleUserMessage(history, userText, { maxIterations = 12,
       lastFailure = failure.error;
       if (hard) {
         // Never paper over a failure: show the raw error exactly as the tool produced it, then stop.
-        await say("assistant", `A tool failed, so I stopped. Raw error from \`${failure.name}\`:\n\n${failure.error.slice(0, 1500)}`, cards, "idle", [{ type: "warning", title: `${failure.name} failed`, body: failure.error.slice(0, 400) }]);
+        await finish("error", `A tool failed, so I stopped. Raw error from \`${failure.name}\`:\n\n${failure.error.slice(0, 1500)}`, { embeds: [{ type: "warning", title: `${failure.name} failed`, body: failure.error.slice(0, 400) }] });
         return;
       }
       // Recoverable: the raw error goes back to the model so it can fix the cause. The card still shows it in red.
@@ -218,5 +235,5 @@ export async function handleUserMessage(history, userText, { maxIterations = 12,
     if (!truncated) msgs.push({ role: "assistant", content: text });
     msgs.push({ role: "user", content: results.join("\n\n") });
   }
-  await say("assistant", `I stopped after ${maxIterations} steps (your max-iteration limit). Tell me to continue and I'll pick up from here.`, cards, "idle");
+  await finish("incomplete", `INCOMPLETE. I stopped after ${maxIterations} steps (your max-iteration limit) before finishing. Tell me to continue and I'll pick up from here.`);
 }

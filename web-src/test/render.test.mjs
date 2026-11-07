@@ -9,6 +9,7 @@ const vite = await createServer({ root, server: { middlewareMode: true }, appTyp
 const B = await vite.ssrLoadModule("/src/components/Build.jsx");
 const C = await vite.ssrLoadModule("/src/components/Cards.jsx");
 const K = await vite.ssrLoadModule("/src/components/Capability.jsx");
+const CH = await vite.ssrLoadModule("/src/components/Chat.jsx");
 let pass = 0, fail = 0; const t = (n, c, d) => { if (c) pass++; else { fail++; console.log("FAIL:", n, d ?? ""); } };
 const app = (o = {}) => (globalThis.__APP__ = { sid: "s1", toast() {}, send() {}, patchSession() {}, agentBusy: false, data: { session: { agent_state: "working", mode: "chat" } }, ...o });
 const h = (C_, props = {}) => r(React.createElement(C_, props));
@@ -26,6 +27,32 @@ app({ data: { session: {}, plan: null } }); t("no plan renders nothing", h(B.Pla
 app({ data: { session: {}, plan: { items: [] } } }); t("empty plan renders nothing", h(B.PlanCard) === "");
 app({ data: { session: {}, plan: { title: "<img src=x onerror=alert(1)>", items: [{ id: 1, text: "<script>alert(1)</script>", done: false }] } } });
 o = h(B.PlanCard); t("plan text is escaped (no injected tags)", !o.includes("<script>") && !o.includes("<img src=x"), o);
+
+
+// OutcomeBadge (Phase 1 item 8): a message that ended INCOMPLETE / stopped / error is labelled, a complete one is not, and it can never be mistaken for success.
+const O = C.OutcomeBadge;
+t("OutcomeBadge exists", typeof O === "function");
+if (typeof O === "function") {
+  const inc = h(O, { outcome: "incomplete" }); t("incomplete shows the word INCOMPLETE and the incomplete class", /INCOMPLETE/.test(inc) && inc.includes("outcome-incomplete"), inc);
+  t("incomplete badge is not styled as success", !inc.includes("outcome-complete") && !/\bDone\b|Success/i.test(inc));
+  t("stopped is labelled Stopped", /Stopped/.test(h(O, { outcome: "stopped" })));
+  t("error is labelled Error", /Error/.test(h(O, { outcome: "error" })));
+  t("complete shows no warning badge", h(O, { outcome: "complete" }) === "");
+  t("missing/unknown outcome renders nothing (old messages)", h(O, {}) === "" && h(O, { outcome: "bogus" }) === "" && h(O, { outcome: null }) === "");
+  t("outcome text is never taken from the message (no injection)", !h(O, { outcome: "<img src=x onerror=1>" }).includes("<img"));
+}
+
+
+// Chat (Phase 1 item 8): the REAL Chat component renders the end state of each message. This test exists because the badge was once used without being imported.
+{
+  const msg = (id, outcome, content) => ({ id, role: "assistant", content, outcome, embeds: null, created_at: "2026-11-07T10:00:0" + id + "Z" });
+  app({ data: { session: { agent_state: "idle", mode: "chat" }, commands: [], attachments: [], messages: [msg(1, "incomplete", "I ran out of steps"), msg(2, "stopped", "Stopped."), msg(3, "complete", "Built it."), msg(4, null, "old message")] } });
+  let html = ""; let err = null; try { html = h(CH.default); } catch (e) { err = e; }
+  t("Chat renders without throwing (OutcomeBadge is imported)", !err, String(err));
+  t("Chat shows exactly one INCOMPLETE badge", (html.match(/INCOMPLETE/g) || []).length === 1, html.slice(0, 200));
+  t("Chat shows the Stopped badge once", (html.match(/outcome-stopped/g) || []).length === 1);
+  t("Chat does not badge complete or old messages", (html.match(/class="outcome /g) || []).length === 2);
+}
 
 // ShotStrip
 app({ data: { session: {}, screenshots: [] } }); t("no screenshots renders nothing", h(B.ShotStrip) === "");
