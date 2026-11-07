@@ -1,7 +1,7 @@
 // Bundles plugin/src/*.luau into ONE pasteable file: dist/BlockyAI.server.lua.
 // Each module becomes a local table via a function wrapper so names don't collide. No remote code, no loadstring of anything fetched.
 import { readFileSync, writeFileSync, mkdirSync, existsSync, copyFileSync } from "node:fs";
-const MODS = { builder: "Builder", transform: "Transform", uibuild: "UIBuild", studio_cmds: "Cmds", ui: "UI" };
+const MODS = { bridge: "Bridge", selftest: "SelfTest", builder: "Builder", transform: "Transform", uibuild: "UIBuild", studio_cmds: "Cmds", ui: "UI" };
 let main = readFileSync("src/main.luau", "utf8");
 for (const [file, name] of Object.entries(MODS)) {
   let src = readFileSync(`src/${file}.luau`, "utf8").replace(/^--!strict\n/, "");

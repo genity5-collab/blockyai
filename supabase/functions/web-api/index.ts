@@ -49,6 +49,16 @@ Deno.serve(handle(async (req) => {
       const { data } = await db.from("plugin_releases").select("version,label,changelog,created_at").order("version", { ascending: false }).limit(20);
       return json({ latest: data?.[0]?.version ?? null, releases: data ?? [] });
     }
+    // Read-only: what the connected plugin reported (Studio version, features), how fresh its last contact is, and the latest self-tests.
+    case "plugin_status": {
+      need();
+      const { data: s } = await db.from("sessions").select("studio_version,studio_features,plugin_version,plugin_connected_at,plugin_last_seen_at,playtest_active,tainted,taint_reason").eq("id", session.id).single();
+      const { data: tests } = await db.from("selftests").select("id,created_at,studio_version,plugin_version,passed,failed,skipped,steps").eq("session_id", session.id).order("created_at", { ascending: false }).limit(5);
+      const { data: cmds } = await db.from("commands").select("status").eq("session_id", session.id).gte("created_at", new Date(Date.now() - 3600_000).toISOString());
+      const counts: Record<string, number> = {};
+      for (const c of cmds ?? []) counts[c.status] = (counts[c.status] ?? 0) + 1;
+      return json({ ...s, selftests: tests ?? [], commands_last_hour: counts });
+    }
     case "session_get": { need(); return json(publicSession(session)); }
     case "session_update": {
       need(); const patch: Record<string, unknown> = {};
@@ -137,7 +147,7 @@ Deno.serve(handle(async (req) => {
       need();
       await db.from("sessions").update({ agent_state: "idle", last_active_at: new Date().toISOString() }).eq("id", session.id);
       await db.from("messages").insert({ session_id: session.id, role: "system", content: "__STOP__" });
-      await db.from("commands").update({ status: "cancelled", error: "stopped by user", finished_at: new Date().toISOString() }).eq("session_id", session.id).in("status", ["pending", "running"]);
+      await db.from("commands").update({ status: "cancelled", error: "stopped by user", finished_at: new Date().toISOString() }).eq("session_id", session.id).in("status", ["queued", "claimed", "running"]);
       return json({ ok: true });
     }
     case "send_message": {
@@ -157,11 +167,11 @@ Deno.serve(handle(async (req) => {
     case "confirm_command": {
       need(); const { command_id, approve } = body;
       const q = db.from("commands").update(approve ? { confirmed: true } : { status: "cancelled", error: "rejected by user", finished_at: new Date().toISOString() })
-        .eq("id", command_id).eq("session_id", session.id).eq("status", "pending");
+        .eq("id", command_id).eq("session_id", session.id).eq("status", "queued");
       await q; return json({ ok: true });
     }
     case "cancel_command": {
-      need(); await db.from("commands").update({ status: "cancelled", error: "cancelled by user", finished_at: new Date().toISOString() }).eq("id", body.command_id).eq("session_id", session.id).in("status", ["pending"]);
+      need(); await db.from("commands").update({ status: "cancelled", error: "cancelled by user", finished_at: new Date().toISOString() }).eq("id", body.command_id).eq("session_id", session.id).in("status", ["queued"]);
       return json({ ok: true });
     }
     // Commands the USER triggers from the UI (screenshot, snapshot, selection, restore). Same allowlist as the agent.

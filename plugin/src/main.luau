@@ -6,7 +6,7 @@ local Selection = game:GetService("Selection")
 local ChangeHistoryService = game:GetService("ChangeHistoryService")
 local LogService = game:GetService("LogService")
 
-local PLUGIN_VERSION = 3
+local PLUGIN_VERSION = 4
 local BASE = "https://blockyai.onrender.com/api/"
 local token = plugin:GetSetting("blockyai_token")
 local runLuaEnabled = plugin:GetSetting("blockyai_runlua") == true
@@ -27,6 +27,8 @@ local ALLOWED: { [string]: boolean } = {
 }
 
 -- ============ MODULES (inlined by build.mjs; each is a separate tested file under plugin/src) ============
+--@@MODULE:bridge@@
+--@@MODULE:selftest@@
 --@@MODULE:builder@@
 --@@MODULE:transform@@
 --@@MODULE:uibuild@@
@@ -706,6 +708,174 @@ local function uploadShots(commandId: string)
 	table.clear(pendingShots)
 end
 
+-- ---------- command bridge wiring ----------
+local resultCache = Bridge.newCache(200)
+local function featureProbe(name: string): boolean
+	if name == "StudioTestService" then
+		return game:GetService("StudioTestService") ~= nil
+	elseif name == "ExecutePlayModeAsync" or name == "ExecuteRunModeAsync" then
+		return typeof((game:GetService("StudioTestService") :: any)[name]) == "function"
+	elseif name == "CaptureService" then
+		return game:GetService("CaptureService") ~= nil
+	elseif name == "Terrain.FillBlock" then
+		return typeof((workspace.Terrain :: any).FillBlock) == "function"
+	elseif name == "Terrain.WriteVoxels" then
+		return typeof((workspace.Terrain :: any).WriteVoxels) == "function"
+	elseif name == "ChangeHistoryService.Recording" then
+		return typeof((ChangeHistoryService :: any).TryBeginRecording) == "function"
+	elseif name == "Raycast" then
+		return typeof((workspace :: any).Raycast) == "function"
+	elseif name == "HttpService.RequestAsync" then
+		return typeof((HttpService :: any).RequestAsync) == "function"
+	elseif name == "Selection" then
+		return Selection ~= nil
+	end
+	return false
+end
+local bridgeEnv: any = {
+	handlers = handlers,
+	allowed = ALLOWED,
+	cache = resultCache,
+	playtestActive = function()
+		return testRunning
+	end,
+	ack = function(id: string)
+		post("plugin-ack", { command_id = id }, true)
+	end,
+	heartbeat = function(id: string)
+		post("plugin-ack", { command_id = id, heartbeat = true }, true)
+	end,
+	clock = os.clock,
+	spawn = task.spawn,
+	wait = task.wait,
+	beat_s = 10,
+}
+
+-- ---------- in-Studio self-test (no AI) ----------
+-- Builds everything under one root folder and removes it afterwards. Uses the plugin's REAL handlers against the REAL engine.
+local selfTestRunning = false
+local function runSelfTest()
+	if selfTestRunning then
+		return
+	end
+	if testRunning then
+		H.selftestOut.Text = "A playtest is running. Stop it first."
+		return
+	end
+	selfTestRunning = true
+	H.selftest.Text = "RUNNING..."
+	H.selftestOut.Text = ""
+	local rootName = "__BlockyAISelfTest"
+	local old = workspace:FindFirstChild(rootName)
+	if old then
+		old:Destroy()
+	end
+	local root = Instance.new("Folder")
+	root.Name = rootName
+	root.Parent = workspace
+	local tracked: { string } = {}
+	local Lighting = game:GetService("Lighting")
+	local function countDescendants(): number
+		return #workspace:GetDescendants() + #game:GetService("ServerScriptService"):GetDescendants() + #game:GetService("StarterGui"):GetDescendants()
+	end
+	local kitchenSink = { name = "SelfTestModel", class = "Model", children = {
+		{ name = "Base", class = "Part", size = { 8, 1, 8 }, position = { 0, 0.5, 0 }, material = "Concrete", color = "#808080" },
+		{ name = "Pillar", class = "Part", shape = "Cylinder", size = { 6, 2, 2 }, position = { 0, 4, 0 }, material = "Metal", color = "#B0B0B0" },
+		{ name = "Roof", class = "WedgePart", size = { 8, 2, 8 }, position = { 0, 8, 0 }, material = "Wood", color = "#8B5A2B" },
+		{ name = "Ball", class = "Part", shape = "Ball", size = { 3, 3, 3 }, position = { 5, 3, 0 }, material = "Neon", color = "#00A2FF" },
+		{ name = "Glass", class = "Part", size = { 4, 4, 0.5 }, position = { -5, 3, 0 }, material = "Glass", color = "#A0D8FF", transparency = 0.5 },
+		{ name = "Lamp", class = "Part", size = { 1, 1, 1 }, position = { 0, 10, 0 }, children = { { name = "Light", class = "PointLight", brightness = 2, range = 12 } } },
+	} }
+	local uiSpec = { name = "SelfTestGui", class = "ScreenGui", children = {
+		{ name = "Panel", class = "Frame", size = { 0, 240, 0, 120 }, position = { 0, 10, 0, 10 }, children = {
+			{ name = "Title", class = "TextLabel", text = "Self-test", size = { 1, 0, 0, 30 } },
+			{ name = "Go", class = "TextButton", text = "OK", size = { 0, 80, 0, 28 }, position = { 0, 10, 0, 50 } },
+		} },
+	} }
+	local ctx: any = {
+		root = "Workspace." .. rootName,
+		h = handlers,
+		kitchenSink = kitchenSink,
+		uiSpec = uiSpec,
+		encode = function(v: any): string
+			local ok, s = pcall(function()
+				return HttpService:JSONEncode(v)
+			end)
+			return ok and s or tostring(v)
+		end,
+		http = function(fn: string, body: any)
+			return post(fn, body, false)
+		end,
+		track = function(path: string)
+			table.insert(tracked, path)
+		end,
+		wait = task.wait,
+		countDescendants = countDescendants,
+		undo = function()
+			ChangeHistoryService:Undo()
+		end,
+		clearTerrain = function()
+			pcall(function()
+				workspace.Terrain:Clear()
+			end)
+		end,
+		saveLighting = function()
+			return { Brightness = Lighting.Brightness, ClockTime = Lighting.ClockTime }
+		end,
+		restoreLighting = function(saved: any)
+			for k, v in pairs(saved or {}) do
+				pcall(function()
+					(Lighting :: any)[k] = v
+				end)
+			end
+		end,
+		cleanup = function()
+			local errs = {}
+			for _, path in ipairs(tracked) do
+				local inst = resolve(path)
+				if inst then
+					local ok, e = pcall(function()
+						inst:Destroy()
+					end)
+					if not ok then
+						table.insert(errs, path .. ": " .. tostring(e))
+					end
+				end
+			end
+			pcall(function()
+				root:Destroy()
+			end)
+			local h = game:GetService("ServerScriptService"):FindFirstChild(HARNESS_NAME)
+			if h then
+				h:Destroy()
+			end
+			if #errs > 0 then
+				error(table.concat(errs, "; "))
+			end
+		end,
+	}
+	local features = Bridge.detect(featureProbe)
+	local report = SelfTest.run(SelfTest.steps(), ctx, features)
+	local lines = { string.format("%d passed, %d failed, %d skipped%s", report.passed, report.failed, report.skipped, report.cleaned and "" or ("  (CLEANUP FAILED: " .. tostring(report.cleanup_error) .. ")")) }
+	for _, st in ipairs(report.steps) do
+		table.insert(lines, string.format("[%s] %s%s", string.upper(st.status), st.name, st.error and (": " .. string.sub(st.error, 1, 90)) or ""))
+	end
+	H.selftestOut.Text = table.concat(lines, "\n")
+	H.selftest.Text = "RUN SELF-TEST"
+	local studioVersion = "unknown"
+	pcall(function()
+		studioVersion = (getfenv() :: any).version()
+	end)
+	local data, code = post("plugin-selftest", { studio_version = studioVersion, plugin_version = PLUGIN_VERSION, features = features, steps = report.steps }, true)
+	if not data then
+		H.selftestOut.Text = H.selftestOut.Text .. "\n(could not send the report to the server: " .. tostring(code) .. ")"
+	end
+	selfTestRunning = false
+end
+H.selftest.MouseButton1Click:Connect(function()
+	task.spawn(runSelfTest)
+end)
+
 local function loop()
 	if running then
 		return
@@ -737,14 +907,11 @@ local function loop()
 		for _, c in ipairs((data and data.commands) or {}) do
 			local label = tostring(c.type)
 			local row = H.activity.add("> " .. label, theme.text, theme.blue, nil)
-			local ok, res
-			if ALLOWED[c.type] and handlers[c.type] then
-				ok, res = pcall(handlers[c.type], c.payload or {})
-			else
-				ok, res = false, "command type not allowed: " .. label
-			end
+			-- Bridge.execute: idempotency cache (never runs the same command twice), playtest guard, ACK before work, heartbeat during it.
+			local outcome = Bridge.execute(bridgeEnv, c)
+			local ok, res = outcome.ok, (outcome.ok and outcome.result or outcome.error)
 			row.Stripe.BackgroundColor3 = ok and theme.green or theme.red
-			row.Text.Text = "> " .. label .. (ok and "  done" or ("  FAILED: " .. string.sub(tostring(res), 1, 140)))
+			row.Text.Text = "> " .. label .. (outcome.cached and "  (repeat: stored result)" or (ok and "  done" or ("  FAILED: " .. string.sub(tostring(res), 1, 140))))
 			for _, e in ipairs(editLog) do
 				H.editlog.add(string.format("[%s] %s %s", string.upper(tostring(e.source)), tostring(e.action), tostring(e.target)), theme.text, theme.violet, nil)
 			end
@@ -776,7 +943,13 @@ H.codeBox:GetPropertyChangedSignal("Text"):Connect(function()
 end)
 H.connect.MouseButton1Click:Connect(function()
 	local cleaned = string.upper((string.gsub(H.codeBox.Text or "", "%s", "")))
-	local data, code = post("plugin-pair", { code = cleaned, place_name = game.Name ~= "" and game.Name or "Untitled place" }, false)
+	local features = Bridge.detect(featureProbe)
+	local studioVersion = "unknown"
+	-- version() is flagged deprecated by the analyzer but is still the only call that returns the Studio build string; a failure just reports "unknown".
+	pcall(function()
+		studioVersion = (getfenv() :: any).version()
+	end)
+	local data, code = post("plugin-pair", { code = cleaned, place_name = game.Name ~= "" and game.Name or "Untitled place", studio_version = studioVersion, features = features, plugin_version = PLUGIN_VERSION }, false)
 	if data and data.token then
 		token = data.token
 		plugin:SetSetting("blockyai_token", token)

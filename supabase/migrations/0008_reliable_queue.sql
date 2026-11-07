@@ -115,3 +115,16 @@ grant execute on function public.claim_command(uuid, int, int) to service_role;
 grant execute on function public.ack_command(uuid, uuid) to service_role;
 grant execute on function public.heartbeat_command(uuid, uuid, int) to service_role;
 grant execute on function public.finish_command(uuid, uuid, boolean, jsonb, text, boolean, int) to service_role;
+
+alter table public.sessions add column if not exists plugin_version int;
+
+-- Section 6: results of the in-Studio self-test (no AI involved). One row per run, one JSON array of steps.
+create table if not exists public.selftests (
+  id uuid primary key default gen_random_uuid(),
+  session_id uuid not null references public.sessions(id) on delete cascade,
+  studio_version text, plugin_version int, features jsonb,
+  passed int not null default 0, failed int not null default 0, skipped int not null default 0,
+  steps jsonb not null default '[]', created_at timestamptz not null default now()
+);
+create index if not exists selftests_session_idx on public.selftests(session_id, created_at desc);
+alter table public.selftests enable row level security;   -- no policies: only the service role (edge functions) reads or writes

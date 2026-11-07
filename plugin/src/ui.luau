@@ -219,7 +219,11 @@ function UI.build(widget: any, theme: Theme, labels: any?): any
 	h.focusToggle = mk("TextButton", { Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = theme.card2, BorderSizePixel = 0, Text = "", TextColor3 = theme.text, Font = Enum.Font.GothamBold, TextSize = 11, LayoutOrder = 4 }, set)
 	corner(h.focusToggle, 6)
 	h.version = mk("TextLabel", { Size = UDim2.new(1, 0, 0, 16), BackgroundTransparency = 1, Text = "", TextColor3 = theme.mute, Font = Enum.Font.Code, TextSize = 10, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 5 }, set)
-	h.disconnect = mk("TextButton", { Size = UDim2.new(1, 0, 0, 28), BackgroundColor3 = theme.red, BorderSizePixel = 0, Text = "DISCONNECT", TextColor3 = Color3.new(0, 0, 0), Font = Enum.Font.GothamBold, TextSize = 11, LayoutOrder = 6 }, set)
+	-- in-Studio self-test (no AI): runs the plugin's own handlers against the real engine and reports pass/fail with raw errors
+	h.selftest = mk("TextButton", { Size = UDim2.new(1, 0, 0, 28), BackgroundColor3 = theme.blue, BorderSizePixel = 0, Text = "RUN SELF-TEST", TextColor3 = Color3.new(0, 0, 0), Font = Enum.Font.GothamBold, TextSize = 11, LayoutOrder = 6 }, set)
+	corner(h.selftest, 6)
+	h.selftestOut = mk("TextLabel", { Size = UDim2.new(1, 0, 0, 120), BackgroundTransparency = 1, Text = "", TextColor3 = theme.mute, Font = Enum.Font.Code, TextSize = 10, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, TextWrapped = true, LayoutOrder = 7 }, set)
+	h.disconnect = mk("TextButton", { Size = UDim2.new(1, 0, 0, 28), BackgroundColor3 = theme.red, BorderSizePixel = 0, Text = "DISCONNECT", TextColor3 = Color3.new(0, 0, 0), Font = Enum.Font.GothamBold, TextSize = 11, LayoutOrder = 8 }, set)
 	corner(h.disconnect, 6)
 
 	-- "Blocky is building" overlay: three bouncing cubes + Stop

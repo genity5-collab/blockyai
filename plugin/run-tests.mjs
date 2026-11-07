@@ -19,7 +19,7 @@ try {
     await vm.fs.writeFile("/tmp/p/test/reference_data.luau", "return " + lua(data) + "\n");
   } catch {}
   for (const t of process.argv.slice(2)) {
-    const r = await sh(`cd /tmp/p && luau test/${t} 2>&1 | tail -60`);
+    const r = await sh(`cd /tmp/p && luau test/${t} > /tmp/out.txt 2>&1; RC=$?; tail -60 /tmp/out.txt; exit $RC`);
     console.log(`$ luau test/${t}  [exit ${r.code}]\n${r.out}\n`);
     if (r.code !== 0 || /FAIL|error/i.test(r.out)) bad = true;
   }

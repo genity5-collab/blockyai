@@ -3,7 +3,7 @@ import { handle, json, admin } from "../_shared/lib.ts";
 // Public, read-only. The plugin calls this to learn (a) the latest plugin version and (b) a small cosmetic config.
 // IMPORTANT: this returns DATA ONLY. The plugin never downloads or runs code from here (no loadstring of remote text).
 // Bump LATEST_VERSION when a new plugin build is committed under /plugin and published on the Get Plugin page.
-const LATEST_VERSION = 3;
+const LATEST_VERSION = 4;
 const CONFIG = {
   theme: { bg: "#0B0E14", card: "#141925", card2: "#1B2233", blue: "#00A2FF", green: "#02FF8A", red: "#FF3B4E", amber: "#FFB800", violet: "#8B5CFF", text: "#E8EEF9", mute: "#8A96AD" },
   labels: { app: "BlockyAI", tagline: "Build Roblox games by talking to them." },
