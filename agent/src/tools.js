@@ -4,7 +4,12 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
+import { ScriptGuard, windowText, sha as contentSha } from "./scriptguard.js";
+export const scriptGuard = new ScriptGuard();
+export const deps = { lint: null };            // tests only: replace the linter where luau-lsp/stylua are not installed. Production leaves it null.
 const sh = promisify(execFile);
+export const DEFAULT_READ = 6000;
+export const VM_READ_DEFAULT = DEFAULT_READ;     // one number for what the model is shown; the same as the result wrapper in loop.js
 export const WORK = "/home/ubuntu/project";
 const SANDBOX = WORK;
 
@@ -98,7 +103,7 @@ export async function lintLuau(source, name = "script") {
   for (const e of errors) problems.push(`${name}(${e.line},${e.column}): ${e.kind}: ${e.message}`);
   // 3. Formatted version = what we push (stylua formats in place, after analysis).
   await vmExec(`stylua ${JSON.stringify(file)}`, 30);
-  const formatted = (await vmRead(file)).result?.content ?? src;
+  const formatted = (await vmRead(file, { raw: true })).result?.content ?? src;
   const passed = problems.length === 0;
   lintLedger.set(hash, { at: Date.now(), name, passed, lines: countLines(src) });
   // The pushed text is the FORMATTED text, so remember that hash as linted too (same content, only whitespace differs).
@@ -135,9 +140,12 @@ export async function vmExec(command, timeoutSec = 60) {
     return { ok: false, error: redact(e.killed ? `timed out after ${timeoutSec}s` : e.message).slice(0, 300) };
   }
 }
-export async function vmRead(path) {
+export async function vmRead(path, opts = {}) {
   const p = vmPath(path); const text = await readFile(p, "utf8");
-  return { ok: true, result: { path: p, bytes: Buffer.byteLength(text), content: redact(text).slice(0, 20000), truncated: text.length > 20000 } };
+  // raw: internal callers that PUSH the text somewhere (lint -> Studio) must get every character, unredacted and unclipped.
+  if (opts.raw) return { ok: true, result: { path: p, bytes: Buffer.byteLength(text), content: text, truncated: false } };
+  const w = windowText(redact(text), { offset: opts.offset, limit: opts.limit ?? VM_READ_DEFAULT });
+  return { ok: true, result: { path: p, bytes: Buffer.byteLength(text), total_chars: w.total, offset: w.offset, content: w.text, truncated: w.truncated, next_offset: w.next_offset, marker: w.marker || undefined } };
 }
 export async function vmWrite(path, content) {
   const p = vmPath(path); const text = String(content ?? "");
@@ -251,7 +259,7 @@ export const TOOLS = {
   vm_lint_luau:           { args: "{name, source}  writes to the VM, runs luau-lsp (Roblox types) + stylua --check; returns {passed, content_hash, errors:[{line,column,message}]}", fn: vmLintLuau },
   sync_mirror:            { args: "{under?}  copy every script from Studio into the VM at /home/ubuntu/project/mirror/<instance path>; returns file_count", fn: syncMirror },
   push_changed:           { args: "{dry_run?}  diff the mirror against what Studio had at sync time; lint and push ONLY modified scripts in one roblox_batch (all-or-nothing)", fn: pushChanged },
-  vm_read_file:           { args: "{path}  read a file on the VM (inside the project folder or /tmp)", fn: (a) => vmRead(a.path) },
+  vm_read_file:           { args: "{path, offset?, limit?}  read a file on the VM (project folder or /tmp). Cut text ends with a [truncated N of M chars, use offset=K] marker; pass offset to read on.", fn: (a) => vmRead(a.path, { offset: a.offset, limit: a.limit }) },
   vm_write_file:          { args: "{path, content}  write a file on the VM; verified by reading it back", fn: (a) => vmWrite(a.path, a.content) },
   plan_create:            { args: "{title, items:[string,...] (2..30), target_path?}  REQUIRED before any build. The numbered checklist is shown live to the user. target_path = the model/area you are building (e.g. \"Workspace.Yacht\"); the server refuses to let you finish if it has fewer than 5 descendants.", fn: async (a) => {
       if (!Array.isArray(a.items) || a.items.length < 2) return { ok: false, error: "items must be a list of at least 2 checklist steps" };
@@ -268,19 +276,38 @@ export const TOOLS = {
   roblox_create:          { args: "{class, parent, name?, properties?}", fn: (a) => run("create", a) },
   roblox_delete:          { args: "{path}  (auto-snapshots first)", fn: (a) => run("delete", a) },
   roblox_move:            { args: "{path, new_parent}", fn: (a) => run("move", a) },
-  roblox_read_script:     { args: "{path}", fn: async (a) => { const r = await run("read_script", a); if (r.ok && r.result?.source != null) await mirror(a.path, r.result.source); return r; } },
-  roblox_write_script:    { args: "{path, source, class?}  GUARDED: a script over 30 lines is refused unless this exact content already passed vm_lint_luau in this session. Smaller scripts are analyzed automatically.", fn: async (a) => {
+  roblox_read_script:     { args: "{path, offset?, limit?}  returns {source (a window), hash, total_chars, truncated, next_offset}. To overwrite this script later you need base_hash = hash, from a read that reached the end (read on with offset if truncated).", fn: async (a) => {
+      const r = await run("read_script", { path: a.path }); if (!r.ok) return r;
+      const full = r.result?.source; if (typeof full !== "string") return r;
+      await mirror(a.path, full);
+      const w = windowText(full, { offset: a.offset, limit: a.limit ?? DEFAULT_READ });
+      const hash = scriptGuard.recordWindow(a.path, full, { offset: w.offset, next_offset: w.next_offset, truncated: w.truncated });
+      return { ...r, result: { class: r.result.class, source: w.text, hash, total_chars: w.total, offset: w.offset, truncated: w.truncated, next_offset: w.next_offset, ...(w.marker ? { marker: w.marker } : {}) } }; } },
+  roblox_write_script:    { args: "{path, source, class?, base_hash?}  base_hash is REQUIRED when the script already exists (the hash from a read_script that reached the end).  GUARDED: a script over 30 lines is refused unless this exact content already passed vm_lint_luau in this session. Smaller scripts are analyzed automatically.", fn: async (a) => {
       if (typeof a.source !== "string" || !a.source.trim()) return { ok: false, error: "source is empty" };
       const lines = countLines(a.source);
       // Hard rule: big script + no prior passing lint of THIS content = refuse, even if the code happens to be clean.
       if (lines > LINT_LINE_THRESHOLD && !lintLedger.get(hashSource(a.source))?.passed)
         return { ok: false, error: `REFUSED: this script is ${lines} lines (limit ${LINT_LINE_THRESHOLD} without a prior lint). No passing vm_lint_luau result exists for this exact source (content hash ${hashSource(a.source)}). Run vm_lint_luau on it in the VM first, fix every error, then call roblox_write_script again with the same source.` };
-      const l = await lintLuau(a.source, a.path);        // small scripts are analyzed here; big ones are re-checked so the pushed (formatted) text is what was verified
+      // Overwriting an existing script needs proof that the MODEL read the whole current script (base_hash). This probe only finds out whether the script
+      // exists; it is deliberately NOT recorded as a read, or the guard would approve every overwrite.
+      const probe = await run("read_script", { path: a.path });
+      const exists = probe.ok && typeof probe.result?.source === "string";
+      if (!probe.ok && !/not a script|not found|parent not found/i.test(String(probe.error))) return { ok: false, error: `could not check whether ${a.path} already exists: ${probe.error}` };
+      const gate = scriptGuard.checkWrite(a.path, { exists, base_hash: a.base_hash });
+      if (!gate.ok) return { ok: false, error: gate.error };
+      const l = await (deps.lint ?? lintLuau)(a.source, a.path);        // small scripts are analyzed here; big ones are re-checked so the pushed (formatted) text is what was verified
       if (!l.passed) return { ok: false, error: "NOT pushed to Studio. Analysis failed (raw):\n" + l.problems.join("\n") + `\nChecked file on the VM: ${l.report.file ?? "(not written)"}` };
       await mirror(a.path, l.formatted);
       const r = await run("write_script", { ...a, source: l.formatted });
+      if (r.ok) scriptGuard.recordWrite(a.path, l.formatted);      // the old hash is now stale; the new content is the base for the next edit
       return r.ok ? { ...r, result: { pushed: r.result, lines, lint: { analyzer: l.report.analyzer?.tool, content_hash: l.hash, checked_file: l.report.file }, note: "Pushed. This is NOT a playtest." } } : r; } },
-  roblox_patch_script:    { args: "{path, find, replace}", fn: (a) => run("patch_script", a) },
+  roblox_patch_script:    { args: "{path, find, replace, base_hash?}  replace one exact piece of text. The script must have been read completely first (read_script).", fn: async (a) => {
+      const gate = scriptGuard.checkWrite(a.path, { exists: true, base_hash: a.base_hash ?? scriptGuard.currentHash(a.path) });
+      if (!gate.ok) return { ok: false, error: gate.error.replace("no base_hash was given", "it was not read this session") };
+      const r = await run("patch_script", a);
+      if (r.ok) scriptGuard.forget(a.path);          // content changed on the Studio side: the next write must read again
+      return r; } },
   roblox_batch:           { args: "{commands:[{type,payload}]}  (max batch size enforced server-side)", fn: (a) => run("batch", a) },
   roblox_playtest_start:  { args: "{mode?: 'run'|'play', seconds?: 2-120}  starts a real test, returns immediately; wait then read logs", fn: (a) => run("playtest_start", a) },
   roblox_playtest_stop:   { args: "{}", fn: (a) => run("playtest_stop", a) },

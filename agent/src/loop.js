@@ -119,8 +119,12 @@ export function stripTool(text) {
   return (at >= 0 ? t.slice(0, at) : t).trim();
 }
 // Game-derived text is wrapped so the model treats it as data, and any attempt to close the wrapper is neutralised.
+export const RESULT_WINDOW = 6000;           // the ONE limit for how much of a tool result the model sees (tools.js VM_READ_DEFAULT uses the same number)
 export function wrapUntrusted(v) {
-  const t = (typeof v === "string" ? v : JSON.stringify(v)).replace(/<\/?untrusted_game_data>/gi, "[tag removed]").slice(0, 6000);
+  const full = (typeof v === "string" ? v : JSON.stringify(v)).replace(/<\/?untrusted_game_data>/gi, "[tag removed]");
+  const cut = full.length > RESULT_WINDOW;
+  // never cut silently: say how much is missing and how to get it
+  const t = cut ? `${full.slice(0, RESULT_WINDOW)}\n[truncated ${full.length - RESULT_WINDOW} of ${full.length} chars, use offset=${RESULT_WINDOW} (and limit) on the read tool to see the rest]` : full;
   return `<untrusted_game_data>\n${t}\n</untrusted_game_data>`;
 }
 
