@@ -85,6 +85,7 @@ local EFFECT_CLASSES = {
 }
 export type Result = {
 	ok: boolean,
+	cancelled: boolean?,
 	error: string?,
 	count: number?,
 	errors: { string }?,
@@ -154,6 +155,8 @@ function Builder.newContext(opts: any?)
 		yield = o.yield or function() end,
 		maxInstances = o.maxInstances or MAX_INSTANCES,
 		allowScripts = o.allowScripts ~= false,
+		cancelFn = o.cancelled,
+		isCancelled = false,
 	}, Ctx)
 end
 
@@ -163,6 +166,21 @@ function Ctx:note(inst: any, label: string)
 	if self.count % YIELD_EVERY == 0 then
 		self.yield()
 	end
+end
+
+-- Cooperative cancel: the bridge's cancelled() turns true after the user pressed Stop. Checked before every node, sticky once set.
+-- A callback that errors is ignored (a broken flag must never break a build).
+function Ctx:stopped(): boolean
+	if self.isCancelled then
+		return true
+	end
+	if self.cancelFn then
+		local ok, v = pcall(self.cancelFn)
+		if ok and v == true then
+			self.isCancelled = true
+		end
+	end
+	return self.isCancelled
 end
 
 function Ctx:fail(msg: string)
@@ -243,6 +261,9 @@ local function setPart(ctx: any, part: any, spec: any, origin: CFrame, label: st
 end
 
 function Builder.buildNode(ctx: any, spec: any, parent: any, origin: CFrame, path: string): any?
+	if ctx:stopped() then
+		return nil
+	end
 	if ctx.count >= ctx.maxInstances then
 		ctx:fail(path .. ": instance limit " .. ctx.maxInstances .. " reached; split the build into sections")
 		return nil
@@ -328,8 +349,18 @@ function Builder.buildNode(ctx: any, spec: any, parent: any, origin: CFrame, pat
 	ctx.named[name] = ctx.named[name] or inst
 	if type(spec.children) == "table" then
 		for _, child in ipairs(spec.children) do
+			if ctx:stopped() then
+				break
+			end
 			Builder.buildNode(ctx, child, inst, origin, label)
 		end
+	end
+	-- Cancelled while building this subtree: throw the half-built (still unparented) instance away instead of publishing it.
+	if ctx.isCancelled then
+		pcall(function()
+			inst:Destroy()
+		end)
+		return nil
 	end
 	-- Parent LAST: the whole subtree is complete before it appears in the DataModel (fewer replication/event hits).
 	local okParent, errParent = pcall(function()
@@ -423,6 +454,9 @@ function Builder.build(parent: any, spec: any, opts: any?): Result
 	end
 	local origin = (opts and opts.origin) or CFrame.new()
 	local root = Builder.buildNode(ctx, spec, parent, origin, "")
+	if ctx.isCancelled then
+		return { ok = false, cancelled = true, error = "cancelled: you pressed Stop, so the build was abandoned and nothing from it was added to the game", count = ctx.count, errors = ctx.errors }
+	end
 	if root == nil then
 		return { ok = false, error = "root failed to build", errors = ctx.errors, count = ctx.count }
 	end

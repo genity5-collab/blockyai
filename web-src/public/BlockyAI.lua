@@ -80,18 +80,32 @@ end
 
 -- ---------- one command, start to finish ----------
 export type Env = {
-	handlers: { [string]: (any) -> any },
+	handlers: { [string]: (any, any?) -> any },   -- (payload, ctl) ctl.cancelled() is true after Stop
 	allowed: { [string]: boolean },
 	cache: Cache,
 	playtestActive: () -> boolean,
 	ack: (id: string) -> (),
-	heartbeat: (id: string) -> (),
+	heartbeat: (id: string) -> boolean?,   -- the server's `alive`; false means the command was cancelled (Stop). nil/unknown is NOT a cancel.
 	clock: () -> number,
 	spawn: ((() -> ()) -> ())?,
 	wait: ((number) -> ())?,
 	beat_s: number?,
 }
 export type Outcome = { ok: boolean, result: any, error: string?, cached: boolean, refused: boolean }
+
+-- The server answers a heartbeat with { alive = boolean }. alive=false means the command was cancelled (the user pressed Stop).
+-- Returns false ONLY for a real boolean false with no transport error. Anything else (network error, junk, no answer) is nil = unknown,
+-- and unknown never cancels work: a flaky connection must not abort a build.
+function B.aliveFrom(data: any, err: any): boolean?
+	if err ~= nil or type(data) ~= "table" then
+		return nil
+	end
+	local a = (data :: any).alive
+	if type(a) == "boolean" then
+		return a
+	end
+	return nil
+end
 
 function B.execute(env: Env, c: any): Outcome
 	local t = tostring(c.type)
@@ -114,6 +128,7 @@ function B.execute(env: Env, c: any): Outcome
 	env.ack(c.id)
 	-- 5. Heartbeat while it runs. A long build_model must not lose its lease.
 	local running = true
+	local stopped = false           -- becomes true when a heartbeat is answered with alive=false (the user pressed Stop)
 	if env.spawn and env.wait then
 		local spawn, wait = env.spawn, env.wait
 		local beat = env.beat_s or 10
@@ -121,12 +136,21 @@ function B.execute(env: Env, c: any): Outcome
 			while running do
 				wait(beat)
 				if running then
-					env.heartbeat(c.id)
+					local okBeat, alive = pcall(env.heartbeat, c.id)
+					if okBeat and alive == false then
+						stopped = true
+					end
 				end
 			end
 		end)
 	end
-	local ok, res = pcall(env.handlers[t], c.payload or {})
+	-- The handler gets a control object. Long handlers (build_model) call ctl.cancelled() between steps and stop early.
+	-- It only turns true on an explicit alive=false answer: a missing/failed heartbeat never cancels work.
+	local ctl = { cancelled = function(): boolean return stopped end }
+	local handler = env.handlers[t]
+	local ok, res = pcall(function()
+		return handler(c.payload or {}, ctl)
+	end)
 	running = false
 	local entry: Entry = { ok = ok, result = ok and res or nil, error = (not ok) and tostring(res) or nil }
 	B.cachePut(env.cache, c.idempotency_key, entry)
@@ -397,6 +421,7 @@ local EFFECT_CLASSES = {
 }
 export type Result = {
 	ok: boolean,
+	cancelled: boolean?,
 	error: string?,
 	count: number?,
 	errors: { string }?,
@@ -466,6 +491,8 @@ function Builder.newContext(opts: any?)
 		yield = o.yield or function() end,
 		maxInstances = o.maxInstances or MAX_INSTANCES,
 		allowScripts = o.allowScripts ~= false,
+		cancelFn = o.cancelled,
+		isCancelled = false,
 	}, Ctx)
 end
 
@@ -475,6 +502,21 @@ function Ctx:note(inst: any, label: string)
 	if self.count % YIELD_EVERY == 0 then
 		self.yield()
 	end
+end
+
+-- Cooperative cancel: the bridge's cancelled() turns true after the user pressed Stop. Checked before every node, sticky once set.
+-- A callback that errors is ignored (a broken flag must never break a build).
+function Ctx:stopped(): boolean
+	if self.isCancelled then
+		return true
+	end
+	if self.cancelFn then
+		local ok, v = pcall(self.cancelFn)
+		if ok and v == true then
+			self.isCancelled = true
+		end
+	end
+	return self.isCancelled
 end
 
 function Ctx:fail(msg: string)
@@ -555,6 +597,9 @@ local function setPart(ctx: any, part: any, spec: any, origin: CFrame, label: st
 end
 
 function Builder.buildNode(ctx: any, spec: any, parent: any, origin: CFrame, path: string): any?
+	if ctx:stopped() then
+		return nil
+	end
 	if ctx.count >= ctx.maxInstances then
 		ctx:fail(path .. ": instance limit " .. ctx.maxInstances .. " reached; split the build into sections")
 		return nil
@@ -640,8 +685,18 @@ function Builder.buildNode(ctx: any, spec: any, parent: any, origin: CFrame, pat
 	ctx.named[name] = ctx.named[name] or inst
 	if type(spec.children) == "table" then
 		for _, child in ipairs(spec.children) do
+			if ctx:stopped() then
+				break
+			end
 			Builder.buildNode(ctx, child, inst, origin, label)
 		end
+	end
+	-- Cancelled while building this subtree: throw the half-built (still unparented) instance away instead of publishing it.
+	if ctx.isCancelled then
+		pcall(function()
+			inst:Destroy()
+		end)
+		return nil
 	end
 	-- Parent LAST: the whole subtree is complete before it appears in the DataModel (fewer replication/event hits).
 	local okParent, errParent = pcall(function()
@@ -735,6 +790,9 @@ function Builder.build(parent: any, spec: any, opts: any?): Result
 	end
 	local origin = (opts and opts.origin) or CFrame.new()
 	local root = Builder.buildNode(ctx, spec, parent, origin, "")
+	if ctx.isCancelled then
+		return { ok = false, cancelled = true, error = "cancelled: you pressed Stop, so the build was abandoned and nothing from it was added to the game", count = ctx.count, errors = ctx.errors }
+	end
 	if root == nil then
 		return { ok = false, error = "root failed to build", errors = ctx.errors, count = ctx.count }
 	end
@@ -1399,7 +1457,7 @@ local function countSpec(spec: any): number
 end
 Cmds.countSpec = countSpec
 
-function Cmds.build_model(p: any): any
+function Cmds.build_model(p: any, ctl: any?): any
 	if type(p.spec) ~= "table" then
 		error("spec is required (an object with name, class, children)")
 	end
@@ -1413,8 +1471,11 @@ function Cmds.build_model(p: any): any
 		origin = CFrame.new(Vector3.new(p.origin[1] or 0, p.origin[2] or 0, p.origin[3] or 0))
 	end
 	ChangeHistoryService:SetWaypoint("BlockyAI before build_model " .. tostring(p.spec.name))
-	local res = D.Builder.build(parent, p.spec, { yield = api.yield, origin = origin, allowScripts = p.allow_scripts ~= false })
+	local res = D.Builder.build(parent, p.spec, { yield = api.yield, origin = origin, allowScripts = p.allow_scripts ~= false, cancelled = ctl and ctl.cancelled or nil })
 	ChangeHistoryService:SetWaypoint("BlockyAI build_model " .. tostring(p.spec.name))
+	if res.cancelled then
+		error(tostring(res.error))           -- already says: Stop was pressed, nothing from this build was added
+	end
 	if not res.ok then
 		error("build failed: " .. tostring(res.error) .. (res.errors and #res.errors > 0 and (" | " .. table.concat(res.errors, " | ")) or ""))
 	end
@@ -2358,7 +2419,7 @@ local templates: { [string]: any } = {}
 Cmds.init({ Builder = Builder, Transform = Transform, resolve = resolve, pathOf = pathOf, logEdit = logEdit, templates = templates, post = post, flash = flash })
 
 -- ---------- classic handlers (kept from earlier versions) ----------
-local handlers: { [string]: (any) -> any } = {}
+local handlers: { [string]: (any, any?) -> any } = {}
 local snapshots: { [string]: any } = {}
 
 local function enc(v: any): any
@@ -2571,13 +2632,22 @@ function handlers.patch_script(p)
 	logEdit("patch_script", pathOf(i), nil, nil)
 	return { path = pathOf(i), patched = true }
 end
-function handlers.batch(p)
+function handlers.batch(p, ctl)
 	local results = {}
 	for n, c in ipairs(p.commands or {}) do
+		-- Stop was pressed: do not start any more sub-commands. The ones already done stay done, and the result says where it stopped.
+		if ctl and ctl.cancelled and ctl.cancelled() then
+			for m = n, #p.commands do
+				results[m] = { ok = false, error = "skipped: Stop was pressed before this step ran" }
+			end
+			break
+		end
 		if not ALLOWED[c.type] or c.type == "run_lua" or c.type == "batch" then
 			results[n] = { ok = false, error = "not allowed in batch" }
 		else
-			local ok, r = pcall(handlers[c.type], c.payload or {})
+			local ok, r = pcall(function()
+				return handlers[c.type](c.payload or {}, ctl)
+			end)
 			results[n] = { ok = ok, result = ok and r or tostring(r) }
 		end
 	end
@@ -2925,8 +2995,10 @@ local bridgeEnv: any = {
 	ack = function(id: string)
 		post("plugin-ack", { command_id = id }, true)
 	end,
-	heartbeat = function(id: string)
-		post("plugin-ack", { command_id = id, heartbeat = true }, true)
+	heartbeat = function(id: string): boolean?
+		-- the server answers { alive = false } once Stop / cancel hit this command; Bridge turns that into ctl.cancelled()
+		local data, err = post("plugin-ack", { command_id = id, heartbeat = true }, true)
+		return Bridge.aliveFrom(data, err)
 	end,
 	clock = os.clock,
 	spawn = task.spawn,

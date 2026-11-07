@@ -108,6 +108,66 @@ do
 	check("no heartbeat after the command finished", beats == 0, beats)
 end
 
+
+-- cooperative cancel (Phase 1 item 11): the server answers a heartbeat with alive=false once Stop / cancel hit a running command.
+-- The handler must be able to SEE that through env.cancelled(), and a normal command must never look cancelled.
+do
+	local loopFn, seenCancelled, seenAfterBeat = nil :: any, nil :: any, nil :: any
+	local alive = true
+	local e = mkEnv({ spawn = function(f) loopFn = f end, beat_s = 10 })
+	e.heartbeat = function(_) return alive end                                  -- the real one returns the server's `alive`
+	local ticks = 0
+	e.wait = function(_) ticks += 1 if ticks > 1 then error("bounded") end end
+	e.handlers = { slow = function(_, ctl)
+		seenCancelled = ctl and ctl.cancelled and ctl.cancelled()                  -- before any beat: not cancelled
+		alive = false                                                              -- the user pressed Stop; the server will say alive=false
+		pcall(loopFn)                                                              -- one heartbeat tick
+		seenAfterBeat = ctl and ctl.cancelled and ctl.cancelled()
+		return "stopped early"
+	end }
+	e.allowed = { slow = true }
+	B.execute(e, { id = "x", type = "slow", payload = {} })
+	check("handler gets a cancel check", seenCancelled ~= nil)
+	check("not cancelled before any heartbeat says so", seenCancelled == false, seenCancelled)
+	check("heartbeat alive=false makes cancelled() true", seenAfterBeat == true, seenAfterBeat)
+end
+do
+	local loopFn, saw = nil :: any, nil :: any
+	local e = mkEnv({ spawn = function(f) loopFn = f end })
+	e.heartbeat = function(_) return true end
+	e.wait = function(_) end
+	local n = 0
+	e.wait = function(_) n += 1 if n > 1 then error("bounded") end end
+	e.handlers = { slow = function(_, ctl) pcall(loopFn) saw = ctl and ctl.cancelled and ctl.cancelled() return 1 end }
+	e.allowed = { slow = true }
+	B.execute(e, { id = "y", type = "slow", payload = {} })
+	check("alive=true heartbeats never mark a command cancelled", saw == false, saw)
+end
+do
+	-- an older heartbeat that returns nothing (nil) must NOT be treated as a cancel
+	local loopFn, saw = nil :: any, nil :: any
+	local e = mkEnv({ spawn = function(f) loopFn = f end })
+	e.heartbeat = function(_) end
+	local n = 0
+	e.wait = function(_) n += 1 if n > 1 then error("bounded") end end
+	e.handlers = { slow = function(_, ctl) pcall(loopFn) saw = ctl and ctl.cancelled and ctl.cancelled() return 1 end }
+	e.allowed = { slow = true }
+	B.execute(e, { id = "z", type = "slow", payload = {} })
+	check("a heartbeat with no answer is not a cancel", saw == false, saw)
+end
+
+
+-- B.aliveFrom: turns the server's heartbeat answer into true / false / nil. ONLY an explicit alive=false is a cancel; errors and junk are "unknown".
+do
+	check("alive=false is a cancel", B.aliveFrom({ ok = false, alive = false }, nil) == false)
+	check("alive=true is alive", B.aliveFrom({ ok = true, alive = true }, nil) == true)
+	check("a network error is unknown, not a cancel", B.aliveFrom(nil, "timeout") == nil)
+	check("an empty answer is unknown", B.aliveFrom({}, nil) == nil and B.aliveFrom(nil, nil) == nil)
+	check("a non-table answer is unknown", B.aliveFrom("alive=false" :: any, nil) == nil)
+	check("alive as a string 'false' is unknown (must be a real boolean)", B.aliveFrom({ alive = "false" }, nil) == nil)
+	check("an error WITH data is unknown", B.aliveFrom({ alive = false }, "http 500") == nil)
+end
+
 -- playtest guard
 do
 	local e, _, runs = mkEnv({ playtestActive = function() return true end })

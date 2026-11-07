@@ -73,7 +73,7 @@ local function countSpec(spec: any): number
 end
 Cmds.countSpec = countSpec
 
-function Cmds.build_model(p: any): any
+function Cmds.build_model(p: any, ctl: any?): any
 	if type(p.spec) ~= "table" then
 		error("spec is required (an object with name, class, children)")
 	end
@@ -87,8 +87,11 @@ function Cmds.build_model(p: any): any
 		origin = CFrame.new(Vector3.new(p.origin[1] or 0, p.origin[2] or 0, p.origin[3] or 0))
 	end
 	ChangeHistoryService:SetWaypoint("BlockyAI before build_model " .. tostring(p.spec.name))
-	local res = D.Builder.build(parent, p.spec, { yield = api.yield, origin = origin, allowScripts = p.allow_scripts ~= false })
+	local res = D.Builder.build(parent, p.spec, { yield = api.yield, origin = origin, allowScripts = p.allow_scripts ~= false, cancelled = ctl and ctl.cancelled or nil })
 	ChangeHistoryService:SetWaypoint("BlockyAI build_model " .. tostring(p.spec.name))
+	if res.cancelled then
+		error(tostring(res.error))           -- already says: Stop was pressed, nothing from this build was added
+	end
 	if not res.ok then
 		error("build failed: " .. tostring(res.error) .. (res.errors and #res.errors > 0 and (" | " .. table.concat(res.errors, " | ")) or ""))
 	end

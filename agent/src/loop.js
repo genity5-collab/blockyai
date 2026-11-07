@@ -110,6 +110,7 @@ export function attachmentContext(list) {
 }
 
 import { parseReply, MAX_CALLS_PER_REPLY } from "./toolparse.js";
+import { compactMessages } from "./context.js";
 import { isMutatingTool, currentTurn } from "./lifecycle.js";
 import { FailureTracker, classifyError } from "./failpolicy.js";
 export { parseReply, MAX_CALLS_PER_REPLY };
@@ -132,7 +133,7 @@ export function wrapUntrusted(v) {
   return `<untrusted_game_data>\n${t}\n</untrusted_game_data>`;
 }
 
-export async function handleUserMessage(history, userText, { maxIterations = 12, llm = api.llm, tools = TOOLS, say = api.say, update = api.update, shouldStop = async () => false, log = (r) => api.logToolCall(r), logLlm = (r) => api.logLlm(r), planApi = (action, body) => api.plan(action, body), messageId = null } = {}) {
+export async function handleUserMessage(history, userText, { maxIterations = 12, llm = api.llm, tools = TOOLS, say = api.say, update = api.update, shouldStop = async () => false, log = (r) => api.logToolCall(r), logLlm = (r) => api.logLlm(r), planApi = (action, body) => api.plan(action, body), messageId = null, contextChars = 120000 } = {}) {
   const runId = randomUUID(); let seq = 0; let gateRejections = 0, parseFailures = 0, consecutiveTruncations = 0;
   const msgs = [{ role: "system", content: SYSTEM }, ...history, { role: "user", content: userText }];   // userText already includes any <attachment> context
   const cards = [];
@@ -149,7 +150,8 @@ export async function handleUserMessage(history, userText, { maxIterations = 12,
   try { await planApi("begin_turn", { message_id: messageId }); } catch {}
   for (let i = 1; i <= maxIterations; i++) {
     if (await shouldStop()) { await finish("stopped", "Stopped. Tell me what to do next."); return; }
-    const r = await llm(msgs);
+    // Long runs: older tool results are shortened so the conversation stays inside the model's window. `msgs` itself is never changed.
+    const r = await llm(compactMessages(msgs, { maxChars: contextChars }).messages);
     if (r.error) { await finish("error", `LLM error: ${r.error}`, { state: "error", showCards: false }); return; }
     const text = r.content || "";
     const truncated = r.truncated === true || r.finish_reason === "length";

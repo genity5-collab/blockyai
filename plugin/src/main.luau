@@ -175,7 +175,7 @@ local templates: { [string]: any } = {}
 Cmds.init({ Builder = Builder, Transform = Transform, resolve = resolve, pathOf = pathOf, logEdit = logEdit, templates = templates, post = post, flash = flash })
 
 -- ---------- classic handlers (kept from earlier versions) ----------
-local handlers: { [string]: (any) -> any } = {}
+local handlers: { [string]: (any, any?) -> any } = {}
 local snapshots: { [string]: any } = {}
 
 local function enc(v: any): any
@@ -388,13 +388,22 @@ function handlers.patch_script(p)
 	logEdit("patch_script", pathOf(i), nil, nil)
 	return { path = pathOf(i), patched = true }
 end
-function handlers.batch(p)
+function handlers.batch(p, ctl)
 	local results = {}
 	for n, c in ipairs(p.commands or {}) do
+		-- Stop was pressed: do not start any more sub-commands. The ones already done stay done, and the result says where it stopped.
+		if ctl and ctl.cancelled and ctl.cancelled() then
+			for m = n, #p.commands do
+				results[m] = { ok = false, error = "skipped: Stop was pressed before this step ran" }
+			end
+			break
+		end
 		if not ALLOWED[c.type] or c.type == "run_lua" or c.type == "batch" then
 			results[n] = { ok = false, error = "not allowed in batch" }
 		else
-			local ok, r = pcall(handlers[c.type], c.payload or {})
+			local ok, r = pcall(function()
+				return handlers[c.type](c.payload or {}, ctl)
+			end)
 			results[n] = { ok = ok, result = ok and r or tostring(r) }
 		end
 	end
@@ -742,8 +751,10 @@ local bridgeEnv: any = {
 	ack = function(id: string)
 		post("plugin-ack", { command_id = id }, true)
 	end,
-	heartbeat = function(id: string)
-		post("plugin-ack", { command_id = id, heartbeat = true }, true)
+	heartbeat = function(id: string): boolean?
+		-- the server answers { alive = false } once Stop / cancel hit this command; Bridge turns that into ctl.cancelled()
+		local data, err = post("plugin-ack", { command_id = id, heartbeat = true }, true)
+		return Bridge.aliveFrom(data, err)
 	end,
 	clock = os.clock,
 	spawn = task.spawn,

@@ -51,18 +51,32 @@ end
 
 -- ---------- one command, start to finish ----------
 export type Env = {
-	handlers: { [string]: (any) -> any },
+	handlers: { [string]: (any, any?) -> any },   -- (payload, ctl) ctl.cancelled() is true after Stop
 	allowed: { [string]: boolean },
 	cache: Cache,
 	playtestActive: () -> boolean,
 	ack: (id: string) -> (),
-	heartbeat: (id: string) -> (),
+	heartbeat: (id: string) -> boolean?,   -- the server's `alive`; false means the command was cancelled (Stop). nil/unknown is NOT a cancel.
 	clock: () -> number,
 	spawn: ((() -> ()) -> ())?,
 	wait: ((number) -> ())?,
 	beat_s: number?,
 }
 export type Outcome = { ok: boolean, result: any, error: string?, cached: boolean, refused: boolean }
+
+-- The server answers a heartbeat with { alive = boolean }. alive=false means the command was cancelled (the user pressed Stop).
+-- Returns false ONLY for a real boolean false with no transport error. Anything else (network error, junk, no answer) is nil = unknown,
+-- and unknown never cancels work: a flaky connection must not abort a build.
+function B.aliveFrom(data: any, err: any): boolean?
+	if err ~= nil or type(data) ~= "table" then
+		return nil
+	end
+	local a = (data :: any).alive
+	if type(a) == "boolean" then
+		return a
+	end
+	return nil
+end
 
 function B.execute(env: Env, c: any): Outcome
 	local t = tostring(c.type)
@@ -85,6 +99,7 @@ function B.execute(env: Env, c: any): Outcome
 	env.ack(c.id)
 	-- 5. Heartbeat while it runs. A long build_model must not lose its lease.
 	local running = true
+	local stopped = false           -- becomes true when a heartbeat is answered with alive=false (the user pressed Stop)
 	if env.spawn and env.wait then
 		local spawn, wait = env.spawn, env.wait
 		local beat = env.beat_s or 10
@@ -92,12 +107,21 @@ function B.execute(env: Env, c: any): Outcome
 			while running do
 				wait(beat)
 				if running then
-					env.heartbeat(c.id)
+					local okBeat, alive = pcall(env.heartbeat, c.id)
+					if okBeat and alive == false then
+						stopped = true
+					end
 				end
 			end
 		end)
 	end
-	local ok, res = pcall(env.handlers[t], c.payload or {})
+	-- The handler gets a control object. Long handlers (build_model) call ctl.cancelled() between steps and stop early.
+	-- It only turns true on an explicit alive=false answer: a missing/failed heartbeat never cancels work.
+	local ctl = { cancelled = function(): boolean return stopped end }
+	local handler = env.handlers[t]
+	local ok, res = pcall(function()
+		return handler(c.payload or {}, ctl)
+	end)
 	running = false
 	local entry: Entry = { ok = ok, result = ok and res or nil, error = (not ok) and tostring(res) or nil }
 	B.cachePut(env.cache, c.idempotency_key, entry)

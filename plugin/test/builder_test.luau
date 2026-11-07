@@ -128,5 +128,26 @@ check("Parent is set LAST (child appears only once built)", (function()
 	return #rr.instance:GetChildren() == 1
 end)())
 
+
+-- 9. cooperative cancel (Phase 1 item 11): Stop must abort a build between steps, and an aborted build must leave NOTHING in the game
+do
+	local function wide(n: number) local kids = {} for i = 1, n do kids[i] = { name = "P" .. i, class = "Part", position = { i, 1, 0 } } end return { name = "Big", class = "Model", children = kids } end
+	local before = #ws:GetChildren()
+	local built, calls = 0, 0
+	local r1 = Builder.build(ws, wide(50), { cancelled = function() calls += 1 return calls > 10 end })
+	check("a cancelled build reports ok=false", r1.ok == false, r1.ok)
+	check("a cancelled build says it was cancelled", r1.cancelled == true and string.find(tostring(r1.error), "cancel") ~= nil, r1.error)
+	check("a cancelled build stopped EARLY (did not build all 50)", (r1.count or 0) < 50 and (r1.count or 0) >= 1, r1.count)
+	check("a cancelled build leaves NOTHING in the workspace", #ws:GetChildren() == before, #ws:GetChildren() - before)
+	local r2 = Builder.build(ws, wide(5), { cancelled = function() return false end })
+	check("cancelled()==false builds normally", r2.ok == true and r2.count == 6, r2.count)
+	local r3 = Builder.build(ws, wide(5))
+	check("no cancelled callback builds normally", r3.ok == true)
+	local r4 = Builder.build(ws, wide(5), { cancelled = function() return true end })
+	check("cancelled before the first step builds nothing", r4.ok == false and r4.cancelled == true and #ws:GetChildren() == before + 2, #ws:GetChildren() - before)
+	local ok = pcall(function() return Builder.build(ws, wide(5), { cancelled = function() error("flag broke") end }) end)
+	check("a broken cancelled() callback never crashes a build", ok)
+end
+
 print(string.format("builder: %d passed, %d failed", passed, failed))
 if failed > 0 then error("builder tests failed") end
