@@ -34,3 +34,7 @@ Allowlisted command types only; `run_lua` off unless enabled in the plugin; dest
 - `build_model` cannot create unions (CSG) or MeshParts from a spec; use stacked parts or `insert_asset`.
 - The plugin never downloads or runs remote code. The server sends data only (commands for an allowlist, a validated JSON theme, a version number).
 - The 5 capability tests (`/#/capability`) need a real paired Studio. Their pass/fail comes from recorded tool results, never from the agent's own claims.
+
+## For reviewers
+
+A plain-words description of how the whole system works, including what is verified and what is not, is in [docs/SYSTEM.md](docs/SYSTEM.md).
