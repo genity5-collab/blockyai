@@ -23,6 +23,7 @@ export const api = {
   setState: (state) => call("agent-messages", { method: "POST", body: JSON.stringify({ state }) }),
   command: (type, payload, idempotency_key) => call("agent-command", { method: "POST", body: JSON.stringify({ type, idempotency_key, payload }) }),
   result: (id) => call(`agent-result?id=${id}`),
+  cancel: (id) => call("agent-cancel", { method: "POST", body: JSON.stringify({ id }) }),
   data: (kind, limit = 100) => call(`agent-data?kind=${kind}&limit=${limit}`),
   plan: (action, body = {}) => call("agent-plan", { method: "POST", body: JSON.stringify({ action, ...body }) }),
   template: (action, body = {}) => call("agent-template", { method: "POST", body: JSON.stringify({ action, ...body }) }),

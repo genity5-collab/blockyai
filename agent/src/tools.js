@@ -28,13 +28,15 @@ export function describeWait(q) {
   return "plugin not responding";
 }
 export async function run(type, payload, opts = {}) {
+  // Stable key: asking for the same thing again reuses the command instead of creating a duplicate. Callers that retry pass the same key.
   const key = opts.idempotency_key ?? _uuid();
+  const noAck = opts.noAckWaitMs ?? NO_ACK_WAIT_MS, pollMs = opts.pollMs ?? 0, grace = opts.graceMs ?? 15_000;
   const q = await api.command(type, payload, key);
   if (q.error) return { ok: false, error: q.error };
   const startedAt = Date.now();
   let last = { status: q.status, needs_confirm: q.needs_confirm, confirmed: false };
   // the overall deadline is the command's own timeout (+ slack) once it is running; before that, the no-ack window
-  let deadline = startedAt + NO_ACK_WAIT_MS;
+  let deadline = startedAt + noAck;
   while (Date.now() < deadline) {
     const r = await api.result(q.id);
     last = r;
@@ -42,11 +44,18 @@ export async function run(type, payload, opts = {}) {
     if (r.status === "failed") return { ok: false, error: r.error ?? "failed", command_id: q.id };
     if (r.status === "cancelled") return { ok: false, error: "cancelled by the user", command_id: q.id };
     if (r.status === "expired") return { ok: false, error: `${r.error ?? "command expired"} (plugin not responding: it never finished the command after ${r.attempts ?? "several"} attempt(s))`, command_id: q.id, expired: true };
-    if (r.status === "running") deadline = Math.max(deadline, (r.acked_at ? new Date(r.acked_at).getTime() : Date.now()) + ((r.timeout_s ?? 60) + 15) * 1000);   // acked: busy, not dead
+    if (r.status === "running") deadline = Math.max(deadline, (r.acked_at ? new Date(r.acked_at).getTime() : Date.now()) + ((r.timeout_s ?? 60) * 1000) + grace);   // acked: busy, not dead
     else if (r.needs_confirm && !r.confirmed) deadline = Math.max(deadline, startedAt + 120_000);                                                      // waiting on a human
     else if (r.status === "claimed") deadline = Math.max(deadline, Date.now() + 20_000);
+    if (pollMs) await new Promise((res) => setTimeout(res, pollMs));
   }
-  return { ok: false, error: `${describeWait(last)} (command ${q.id}, state ${last.status}, waited ${Math.round((Date.now() - startedAt) / 1000)}s)`, command_id: q.id, state: last.status };
+  // Giving up. Do not leave the command behind: if nobody has claimed it, cancel it so it cannot run later after we reported failure.
+  // If the plugin already has it, it cannot be recalled: say so, because the game may still change.
+  let cancelled = false, finalState = last.status;
+  try { const c = await api.cancel(q.id); cancelled = c?.cancelled === true; finalState = c?.status ?? finalState; } catch {}
+  const base = `${describeWait(last)} (command ${q.id}, state ${finalState}, waited ${Math.round((Date.now() - startedAt) / 1000)}s)`;
+  const warn = cancelled ? " The command was cancelled before it ran." : (["claimed", "running"].includes(finalState) ? " It could NOT be cancelled: Studio may still be running it, so the game may still change. Check the state before retrying." : "");
+  return { ok: false, error: base + warn, command_id: q.id, state: finalState, cancelled };
 }
 
 const safe = (p) => String(p).replace(/[^A-Za-z0-9_./ -]/g, "_").replace(/\.\.+/g, "_");

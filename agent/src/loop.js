@@ -111,6 +111,7 @@ export function attachmentContext(list) {
 
 import { parseReply, MAX_CALLS_PER_REPLY } from "./toolparse.js";
 import { isMutatingTool, currentTurn } from "./lifecycle.js";
+import { FailureTracker, classifyError } from "./failpolicy.js";
 export { parseReply, MAX_CALLS_PER_REPLY };
 // Back-compatible wrappers. The real work (raw-body form, JSON form, bare fence, error positions, 6-call cap) is in toolparse.js.
 export const parseTools = (text) => parseReply(text).calls.map(({ name, args }) => ({ name, args }));
@@ -132,10 +133,11 @@ export function wrapUntrusted(v) {
 }
 
 export async function handleUserMessage(history, userText, { maxIterations = 12, llm = api.llm, tools = TOOLS, say = api.say, update = api.update, shouldStop = async () => false, log = (r) => api.logToolCall(r), logLlm = (r) => api.logLlm(r), planApi = (action, body) => api.plan(action, body), messageId = null } = {}) {
-  const runId = randomUUID(); let seq = 0; let gateRejections = 0, consecutiveFailures = 0, lastFailure = null, parseFailures = 0, consecutiveTruncations = 0;
+  const runId = randomUUID(); let seq = 0; let gateRejections = 0, parseFailures = 0, consecutiveTruncations = 0;
   const msgs = [{ role: "system", content: SYSTEM }, ...history, { role: "user", content: userText }];   // userText already includes any <attachment> context
   const cards = [];
   let liveId = null;
+  const tracker = new FailureTracker();                  // decides continue / retry / stop per CALL and per KIND of error (see failpolicy.js)
   let mutated = false;                                   // did ANY tool this turn change the game? decides whether the finish gate applies
   currentTurn.messageId = messageId;
   // Every exit goes through here, so every final message carries an outcome and a plan that did not finish is closed.
@@ -209,29 +211,39 @@ export async function handleUserMessage(history, userText, { maxIterations = 12,
       const card = { id: `${cards.length + 1}`, name: call.name, family: toolFamily(call.name), args: call.args, status: "running" };
       cards.push(card);
       if (!liveId) { const m = await say("assistant", thought || "Working...", cards, "working"); liveId = m?.id; } else await update(liveId, thought || "Working...", cards);
-      let out;
       if (isMutatingTool(call.name)) mutated = true;       // even a failed attempt counts: the game may have changed
-      if (!t) out = { ok: false, error: `unknown tool ${call.name}` };
-      else { try { out = await t.fn(call.args ?? {}); } catch (e) { out = { ok: false, error: String(e.message).slice(0, 300) }; } }
-      // Audit log: name, short args, duration, success/error. The server decides the family (vm / roblox) from the name. Logging can never break a run.
-      try { Promise.resolve(log({ run_id: runId, seq: seq++, message_id: messageId, name: call.name, args_summary: summarizeArgs(call.args), result_summary: out.ok && out.result && typeof out.result === "object" ? out.result : null, ok: !!out.ok, error: out.ok ? null : String(out.error ?? ""), duration_ms: Date.now() - t0 })).catch(() => {}); } catch {}
+      let out, verdict = null, attempt = 0;
+      for (;;) {                                           // one pass, plus automatic retries of the SAME call for transient errors
+        attempt++; const ta = Date.now();
+        if (!t) out = { ok: false, error: `unknown tool ${call.name}` };
+        else { try { out = await t.fn(call.args ?? {}); } catch (e) { out = { ok: false, error: String(e.message).slice(0, 300) }; } }
+        verdict = out.ok ? null : tracker.record(call, out.error);
+        // Audit log: name, short args, duration, success/error, and WHY it failed (kind). Logging can never break a run.
+        try { Promise.resolve(log({ run_id: runId, seq: seq++, message_id: messageId, name: call.name, args_summary: summarizeArgs(call.args), result_summary: out.ok && out.result && typeof out.result === "object" ? out.result : null, ok: !!out.ok, error: out.ok ? null : String(out.error ?? ""), error_kind: verdict?.kind ?? null, attempt, duration_ms: Date.now() - ta })).catch(() => {}); } catch {}
+        // Only READ-ONLY calls are retried automatically. Repeating a build/edit after a timeout could do it twice (the first may still be
+        // running in Studio), so a mutating call goes back to the model instead, which must check the game before it tries again.
+        if (verdict?.action === "retry" && isMutatingTool(call.name)) {
+          verdict = { action: "continue", kind: "retry", note: "not auto-retried: this call changes the game and the first attempt may still be running" };
+          break;
+        }
+        if (verdict?.action === "retry") { card.result = `retrying (${attempt}): ${String(out.error).slice(0, 120)}`; if (liveId) await update(liveId, thought || "Working...", cards); continue; }
+        break;
+      }
+      if (out.ok) tracker.recordSuccess(call);
       card.status = out.ok ? "done" : "failed"; card.result = out.ok ? undefined : out.error;
       if (liveId) await update(liveId, thought || "Working...", cards);
       results.push(`Tool result for ${call.name} (${out.ok ? "ok" : "FAILED"}):\n${wrapUntrusted(out.ok ? out.result ?? "ok" : out.error)}`);
-      if (!out.ok) { failure = { name: call.name, error: String(out.error ?? "unknown error") }; break; }
+      if (!out.ok) { failure = { name: call.name, error: String(out.error ?? "unknown error"), verdict }; break; }
     }
     if (failure) {
-      consecutiveFailures++;
-      const hard = HARD_FAILURE.test(failure.error) || consecutiveFailures >= MAX_CONSECUTIVE_FAILURES || failure.error === lastFailure;
-      lastFailure = failure.error;
-      if (hard) {
+      if (failure.verdict?.action === "stop") {
         // Never paper over a failure: show the raw error exactly as the tool produced it, then stop.
-        await finish("error", `A tool failed, so I stopped. Raw error from \`${failure.name}\`:\n\n${failure.error.slice(0, 1500)}`, { embeds: [{ type: "warning", title: `${failure.name} failed`, body: failure.error.slice(0, 400) }] });
+        await finish("error", `A tool failed, so I stopped (${failure.verdict.reason.split(". Last error")[0]}). Raw error from \`${failure.name}\`:\n\n${failure.error.slice(0, 1500)}`, { embeds: [{ type: "warning", title: `${failure.name} failed`, body: failure.error.slice(0, 400) }] });
         return;
       }
-      // Recoverable: the raw error goes back to the model so it can fix the cause. The card still shows it in red.
-      results.push("The call above FAILED with the raw error shown. Fix the cause and retry; do not claim success.");
-    } else { consecutiveFailures = 0; lastFailure = null; }
+      // Recoverable: the raw error goes back to the model so it can change the call. The card still shows it in red.
+      results.push(failure.verdict?.note ? `The call above FAILED and was NOT retried automatically: it changes the game, and the first attempt may still be running or may have partly applied. Read the game (roblox_get_tree / roblox_find) to see what exists BEFORE trying again, so you do not build it twice.` : "The call above FAILED with the raw error shown. Change the call to fix the cause (a different path, fixed code, a read first); repeating the exact same call will stop the run. Do not claim success.");
+    }
     if (!truncated) msgs.push({ role: "assistant", content: text });
     msgs.push({ role: "user", content: results.join("\n\n") });
   }

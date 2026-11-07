@@ -68,11 +68,13 @@ test("LOOP: a HARD failure (plugin offline) stops immediately with the raw error
     assert.equal(n, 1); assert.match(posted.at(-1).c, /plugin did not respond/);
   } finally { api.plan = realPlan; }
 });
-test("LOOP: four different consecutive failures stop the run (no endless loop)", async () => {
+test("LOOP: a run of failing calls always stops (no endless loop)", async () => {
+  // Item 9: the stop rule is now per CALL and per tool budget instead of "4 errors in a row". Every call here differs (new args, new error),
+  // so only the per-tool budget (6) can end it. The contract that matters is unchanged: it stops, with the raw error shown.
   const realPlan = api.plan; api.plan = async () => ({ plan: null }); const posted = []; let n = 0, e = 0;
   try {
-    await handleUserMessage([], "go", { llm: async () => { n++; return { content: T("t") }; }, tools: { t: { fn: async () => ({ ok: false, error: "different error " + e++ }) } }, say: mkSay(posted), update: async () => {}, log: () => {}, maxIterations: 20 });
-    assert.equal(n, 4); assert.match(posted.at(-1).c, /A tool failed, so I stopped/);
+    await handleUserMessage([], "go", { llm: async () => { n++; return { content: `<tool>{"name":"t","args":{"i":${n}}}</tool>` }; }, tools: { t: { fn: async () => ({ ok: false, error: "different error " + e++ }) } }, say: mkSay(posted), update: async () => {}, log: () => {}, maxIterations: 40 });
+    assert.ok(n <= 8, "bounded: stopped after " + n + " model calls"); assert.match(posted.at(-1).c, /A tool failed, so I stopped/); assert.match(posted.at(-1).c, /different error/);
   } finally { api.plan = realPlan; }
 });
 test("HARD_FAILURE matches the real unrecoverable errors only", () => {
