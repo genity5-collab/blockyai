@@ -1,0 +1,37 @@
+project_id = "sqiruowyfjoctskogzjw"
+
+[functions.agent-command]
+verify_jwt = false
+
+[functions.agent-result]
+verify_jwt = false
+
+[functions.agent-data]
+verify_jwt = false
+
+[functions.agent-messages]
+verify_jwt = false
+
+[functions.llm-proxy]
+verify_jwt = false
+
+[functions.plugin-pair]
+verify_jwt = false
+
+[functions.plugin-poll]
+verify_jwt = false
+
+[functions.plugin-result]
+verify_jwt = false
+
+[functions.pair-create]
+verify_jwt = false
+
+[functions.vm-start]
+verify_jwt = false
+
+[functions.vm-stop]
+verify_jwt = false
+
+[functions.vm-status]
+verify_jwt = false

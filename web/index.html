@@ -1,0 +1,18 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BlockyAI</title><link rel="stylesheet" href="style.css"></head><body>
+<div id="auth" class="card center"><h1>BlockyAI</h1><p class="mut">AI that builds in Roblox Studio</p>
+<input id="email" type="email" placeholder="email"><input id="pw" type="password" placeholder="password (min 6)">
+<div class="row"><button id="login">Sign in</button><button id="signup" class="ghost">Create account</button></div><p id="autherr" class="err"></p></div>
+<div id="app" hidden>
+<aside><h2>BlockyAI</h2><button id="newsess">+ New session</button><ul id="sessions"></ul><button id="logout" class="ghost sm">Sign out</button></aside>
+<main>
+ <header><div id="title">No session</div>
+  <div class="badges"><span id="vmbadge" class="badge">VM: none</span><span id="plbadge" class="badge">Studio: offline</span><span id="agbadge" class="badge">Agent: idle</span>
+  <button id="vmstart" class="sm">Start VM</button><button id="vmrestart" class="sm ghost">Restart VM</button><button id="vmstop" class="sm ghost">Suspend</button></div></header>
+ <div id="pair" class="banner" hidden></div>
+ <div id="chat"></div>
+ <form id="form"><input id="msg" placeholder="Tell BlockyAI what to build..." autocomplete="off"><button>Send</button></form>
+</main></div>
+<script>window.BLOCKY={url:"https://sqiruowyfjoctskogzjw.supabase.co",anon:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNxaXJ1b3d5ZmpvY3Rza29nemp3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQwNDQzNDQsImV4cCI6MjEwOTYyMDM0NH0.cffg2Y4-4tTZWf8wwyu7o4Bac1atO1KV2CnJYKSojTc"}</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="app.js"></script></body></html>
