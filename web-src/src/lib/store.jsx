@@ -66,10 +66,26 @@ export function AppProvider({ children }) {
     } finally { setVmBusy(false); }
   }, [vmBusy, toast]);
 
-  const send = async (text) => {
-    if (!sid || !text.trim()) return; ensureVm();
-    const r = await web("send_message", { session_id: sid, content: text }); if (r.error) toast(r.error, "error");
-    loadSessions();
+  // Busy = the agent is answering. Derived from the last poll PLUS a local flag so the composer locks the instant you press send.
+  const [sending, setSending] = useState(false);
+  const agentBusy = sending || ["thinking", "working"].includes(data?.session?.agent_state);
+  useEffect(() => { if (sending && ["thinking", "working"].includes(data?.session?.agent_state)) setSending(false); }, [data?.session?.agent_state]);
+  useEffect(() => { if (!sending) return; const t = setTimeout(() => setSending(false), 8000); return () => clearTimeout(t); }, [sending]);
+
+  const send = async (text, attachmentIds = []) => {
+    if (!sid || agentBusy || (!text.trim() && !attachmentIds.length)) return false;
+    setSending(true); ensureVm();
+    const r = await web("send_message", { session_id: sid, content: text, attachment_ids: attachmentIds });
+    if (r.error) { setSending(false); toast(r.error, r.busy ? "warn" : "error"); return false; }
+    loadSessions(); return true;
+  };
+  const stop = async () => { const r = await web("stop_agent", { session_id: sid }); setSending(false); if (r.error) toast(r.error, "error"); else toast("Stopped", "info"); };
+  // Files go to the server as base64 (images and text/code only; the server re-checks type and size).
+  const upload = async (file) => {
+    if (!sid) return { error: "No session" };
+    if (file.size > 4_000_000) return { error: "That file is over 4 MB." };
+    const buf = new Uint8Array(await file.arrayBuffer()); let bin = ""; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+    return web("upload_attachment", { session_id: sid, name: file.name || "pasted-image.png", mime: file.type || "", data: btoa(bin) });
   };
   const patchSession = async (patch) => { const r = await web("session_update", { session_id: sid, patch }); if (!r.error) setData((d) => d && { ...d, session: r }); };
   const queue = async (type, payload = {}) => { const r = await web("queue", { session_id: sid, type, payload }); if (r.error) toast(r.error, "error"); return r; };
@@ -78,6 +94,6 @@ export function AppProvider({ children }) {
   useEffect(() => { const s = data?.session; if (!s || vmTry.current > 2) return;
     if (s.plugin_connected_at && ["suspended", "error", "stopped"].includes(s.vm_status) && ["thinking", "working"].includes(s.agent_state)) { vmTry.current++; ensureVm(); } }, [data?.session?.vm_status, data?.session?.agent_state]);
 
-  const value = { sessions, sid, data, ping, toasts, pairing, setPairing, stats, toast, select, createSession, refreshPairing, deleteSession, loadSessions, ensureVm, vmBusy, send, patchSession, queue };
+  const value = { sessions, sid, data, ping, toasts, pairing, setPairing, stats, toast, select, createSession, refreshPairing, deleteSession, loadSessions, ensureVm, vmBusy, send, stop, upload, agentBusy, patchSession, queue };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

@@ -52,23 +52,84 @@ Deno.serve(handle(async (req) => {
     // One cursor-based poll returns everything the HUD needs. Cheap, and no table is exposed to the browser.
     case "poll": {
       need(); const c = body.cursors ?? {};
-      const [msgs, cmds, edits, logs, shots, snaps] = await Promise.all([
+      const [msgs, cmds, edits, logs, shots, snaps, atts] = await Promise.all([
         db.from("messages").select("*").eq("session_id", session.id).order("created_at").limit(300),
         db.from("commands").select("id,type,payload,status,result,error,needs_confirm,confirmed,created_at,finished_at").eq("session_id", session.id).order("created_at", { ascending: false }).limit(60),
         db.from("edit_log").select("*").eq("session_id", session.id).order("created_at", { ascending: false }).limit(150),
         db.from("playtest_logs").select("*").eq("session_id", session.id).gt("id", Number(c.log ?? 0)).order("id").limit(300),
         db.from("screenshots").select("*").eq("session_id", session.id).order("created_at", { ascending: false }).limit(24),
         db.from("snapshots").select("id,label,created_at").eq("session_id", session.id).order("created_at", { ascending: false }).limit(30),
+        db.from("attachments").select("id,kind,name,mime,size,description,created_at").eq("session_id", session.id).order("created_at").limit(60),
       ]);
       const shotsOut = [];
       for (const s of shots.data ?? []) { const { data: sig } = await db.storage.from("screenshots").createSignedUrl(s.storage_path, 900); shotsOut.push({ id: s.id, created_at: s.created_at, url: sig?.signedUrl }); }
       const online = !!session.plugin_last_seen_at && Date.now() - new Date(session.plugin_last_seen_at).getTime() < 30_000;
-      return json({ session: publicSession(session), plugin_online: online, messages: msgs.data, commands: cmds.data, edit_log: edits.data, playtest_logs: logs.data, screenshots: shotsOut, snapshots: snaps.data, server_time: Date.now() });
+      return json({ session: publicSession(session), plugin_online: online, messages: msgs.data, commands: cmds.data, edit_log: edits.data, playtest_logs: logs.data, screenshots: shotsOut, snapshots: snaps.data, attachments: atts.data, server_time: Date.now() });
+    }
+
+    // ---- attachments: images (described by qwen25-vl + OCR paddleocr-vl, both self-hosted) and text/code files ----
+    case "upload_attachment": {
+      need();
+      const name = String(body.name ?? "file").replace(/[^\w.\- ]/g, "_").slice(0, 80);
+      const mime = String(body.mime ?? "application/octet-stream").toLowerCase();
+      let bytes: Uint8Array;
+      try { bytes = Uint8Array.from(atob(String(body.data ?? "")), (c) => c.charCodeAt(0)); } catch { return json({ error: "bad file data" }, 400); }
+      if (!bytes.length) return json({ error: "empty file" }, 400);
+      const isImg = ["image/png", "image/jpeg", "image/webp", "image/gif"].includes(mime);
+      const TEXT_EXT = /\.(lua|luau|txt|md|json|csv|log|rbxlx|rbxmx|xml|html|css|js|ts)$/i;
+      const isText = !isImg && (mime.startsWith("text/") || mime === "application/json" || TEXT_EXT.test(name));
+      if (!isImg && !isText) return json({ error: "Only images (png, jpg, webp, gif) and text or code files are supported." }, 400);
+      if (bytes.length > (isImg ? 4_000_000 : 300_000)) return json({ error: isImg ? "Image is over 4 MB." : "Text file is over 300 KB." }, 400);
+      const { count } = await db.from("attachments").select("id", { count: "exact", head: true }).eq("session_id", session.id);
+      if ((count ?? 0) >= 40) return json({ error: "This session has reached its 40 file limit." }, 400);
+      const path = `${session.id}/${crypto.randomUUID()}-${name}`;
+      const up = await db.storage.from("attachments").upload(path, bytes, { contentType: isImg ? mime : "text/plain", upsert: false });
+      if (up.error) return json({ error: "storage: " + up.error.message }, 500);
+      let description: string | null = null, ocr: string | null = null, text: string | null = null;
+      if (isImg) {
+        const key = Deno.env.get("BLOCKY_LLM_API_KEY");
+        const call = async (ep: string, model: string) => {
+          const fd = new FormData(); fd.append("image", new Blob([bytes], { type: mime }), name); fd.append("model", model);
+          const r = await fetch(`https://api.free.ai/v1/${ep}/`, { method: "POST", headers: { Authorization: `Bearer ${key}` }, body: fd, signal: AbortSignal.timeout(50000) });
+          return r.ok ? await r.json().catch(() => ({})) : {};
+        };
+        const [d, o] = await Promise.all([call("image/describe", "qwen25-vl"), call("ocr", "paddleocr-vl")]);
+        description = (d.model === "qwen25-vl" ? String(d.description ?? "") : "").slice(0, 1500) || null;
+        ocr = (o.model === "paddleocr-vl" ? String(o.text ?? "") : "").slice(0, 3000) || null;
+      } else {
+        text = new TextDecoder().decode(bytes).replace(/\u0000/g, "").slice(0, 60000);
+      }
+      const { data, error } = await db.from("attachments").insert({
+        session_id: session.id, kind: isImg ? "image" : "text", name, mime, size: bytes.length, storage_path: path,
+        description, ocr_text: ocr, text_content: text,
+      }).select("id,kind,name,mime,size,description,created_at").single();
+      if (error) return json({ error: error.message }, 500);
+      return json(data);
+    }
+    case "attachment_url": {
+      need();
+      const { data: a } = await db.from("attachments").select("storage_path").eq("id", body.id).eq("session_id", session.id).maybeSingle();
+      if (!a) return json({ error: "not found" }, 404);
+      const { data: sig } = await db.storage.from("attachments").createSignedUrl(a.storage_path, 600);
+      return json({ url: sig?.signedUrl ?? null });
+    }
+    case "stop_agent": {
+      need();
+      await db.from("sessions").update({ agent_state: "idle", last_active_at: new Date().toISOString() }).eq("id", session.id);
+      await db.from("messages").insert({ session_id: session.id, role: "system", content: "__STOP__" });
+      await db.from("commands").update({ status: "cancelled", error: "stopped by user", finished_at: new Date().toISOString() }).eq("session_id", session.id).in("status", ["pending", "running"]);
+      return json({ ok: true });
     }
     case "send_message": {
-      need(); const text = String(body.content ?? "").trim().slice(0, 4000); if (!text) return json({ error: "empty" }, 400);
-      const { data } = await db.from("messages").insert({ session_id: session.id, role: "user", content: text }).select().single();
-      await db.from("sessions").update({ last_active_at: new Date().toISOString() }).eq("id", session.id);
+      need(); const text = String(body.content ?? "").trim().slice(0, 4000); if (!text && !(Array.isArray(body.attachment_ids) && body.attachment_ids.length)) return json({ error: "empty" }, 400);
+      // One message at a time: refuse while the agent is still answering. A stale lock (agent crashed) expires after 3 minutes.
+      if (["thinking", "working"].includes(session.agent_state) && Date.now() - new Date(session.last_active_at ?? 0).getTime() < 180_000)
+        return json({ error: "Blocky is still working. Wait for it to finish, or press Stop.", busy: true }, 409);
+      const ids: string[] = Array.isArray(body.attachment_ids) ? body.attachment_ids.map(String).slice(0, 6) : [];
+      let okIds: string[] = [];
+      if (ids.length) { const { data: own } = await db.from("attachments").select("id").eq("session_id", session.id).in("id", ids); okIds = (own ?? []).map((r: { id: string }) => r.id); }
+      const { data } = await db.from("messages").insert({ session_id: session.id, role: "user", content: text, attachment_ids: okIds }).select().single();
+      await db.from("sessions").update({ last_active_at: new Date().toISOString(), agent_state: "thinking" }).eq("id", session.id);
       if (session.title === "New session") await db.from("sessions").update({ title: text.slice(0, 40) }).eq("id", session.id);
       return json(data);
     }

@@ -40,6 +40,8 @@ Deno.serve(handle(async (req) => {
       throw new Error("agent service failed to start: " + (j.stdout ?? "").replace(/BLOCKY_AGENT_TOKEN=\S+/g, "").slice(0, 200));
     }
     const id = (vm as any).id ?? s.vm_id;
+    // Written BY the VM (shell on the VM), so /diagnostics can prove a command really ran there and see per-session content.
+    await vm.exec(`printf 'vm_id=%s\nsession_id=%s\nstarted_at=%s\nagent_service=%s\nnode=%s\n' '${id}' '${s.id}' "$(date -u +%FT%TZ)" "$(systemctl is-active blockyai-agent)" "$(node -v)" > /tmp/vmcheck.txt`);
     await db.from("sessions").update({ vm_id: id, vm_status: "running", vm_started_at: new Date().toISOString(), last_active_at: new Date().toISOString() }).eq("id", s.id);
     return json({ vm_id: id, status: "running" });
   } catch (e) {

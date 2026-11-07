@@ -5,7 +5,7 @@ export function identity() {
   if (!id || !key || key.length < 24) { id = crypto.randomUUID(); key = rand(24); localStorage.setItem("blocky_client_id", id); localStorage.setItem("blocky_client_key", key); }
   return { id, key };
 }
-async function call(path, body, method = "POST", qs = "") {
+export async function call(path, body, method = "POST", qs = "") {
   const { id, key } = identity();
   const t0 = performance.now();
   let r; try { r = await fetch(`/api/${path}${qs}`, {
