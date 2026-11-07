@@ -18,6 +18,20 @@ export function evaluateCompletion(plan: any, targetDescendants: number | null) 
   return { ok: reasons.length === 0, reasons };
 }
 
+// An item is addressed by its number. Models often send the item's text instead, so accept "3", 3, "#3", the exact text, or a UNIQUE text match.
+export function findItem(items: any[], ref: unknown): any | null {
+  const raw = String(ref ?? "").trim();
+  const num = Number(raw.replace(/^#/, ""));
+  if (raw !== "" && Number.isInteger(num)) { const byId = items.find((x) => x.id === num); if (byId) return byId; }
+  const norm = (t: string) => t.toLowerCase().replace(/\s+/g, " ").trim();
+  const q = norm(raw);
+  if (!q) return null;
+  const exact = items.filter((x) => norm(x.text) === q);
+  if (exact.length === 1) return exact[0];
+  const partial = items.filter((x) => norm(x.text).includes(q) || q.includes(norm(x.text)));
+  return partial.length === 1 ? partial[0] : null; // ambiguous means no match, never a guess
+}
+
 Deno.serve(handle(async (req) => {
   const { db, session } = await authAgent(req);
   const b = await req.json().catch(() => ({}));
@@ -44,8 +58,8 @@ Deno.serve(handle(async (req) => {
     if (!plan) return json({ error: "no active plan. Call plan_create first." }, 400);
     const items = plan.items.map((i: any) => ({ ...i }));
     for (const u of Array.isArray(b.updates) ? b.updates.slice(0, 40) : []) {
-      const it = items.find((x: any) => x.id === Number(u.id));
-      if (!it) return json({ error: `no item #${u.id}` }, 400);
+      const it = findItem(items, u.id);
+      if (!it) return json({ error: `no checklist item matches ${JSON.stringify(String(u.id).slice(0, 80))}. Use the NUMBER. Items: ${items.map((x: any) => `#${x.id} ${x.text}`).join(" | ").slice(0, 900)}` }, 400);
       if (typeof u.done === "boolean") it.done = u.done;
       if (typeof u.verified === "boolean") it.verified = u.verified;
       if (u.note != null) it.note = clip(u.note, 240);
