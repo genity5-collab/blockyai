@@ -1960,9 +1960,13 @@ local function post(fn: string, body: any, withToken: boolean?): (any, any)
 	return nil, lastCode
 end
 
-local function get(fn: string, query: string?): any
+-- Read-only calls also use POST: the site's /api proxy forwards POST only. The body carries the plugin version.
+local function get(fn: string, body: any?): any
 	local ok, res = pcall(function()
-		return HttpService:RequestAsync({ Url = BASE .. fn .. (query or ""), Method = "GET" })
+		return HttpService:RequestAsync({
+			Url = BASE .. fn, Method = "POST", Headers = { ["Content-Type"] = "application/json" },
+			Body = HttpService:JSONEncode(body or {}),
+		})
 	end)
 	if not ok or res.StatusCode >= 400 then
 		return nil
@@ -1976,22 +1980,27 @@ end
 -- ---------- path helpers ----------
 local function resolve(path: string): Instance?
 	local cur: any = game
+	local first = true
 	for part in string.gmatch(path, "[^%./]+") do
-		if not (cur == game and part == "game") then
-			local nxt = cur:FindFirstChild(part)
-			if not nxt and cur == game then
-				local okSvc, svc = pcall(function()
-					return game:GetService(part)
-				end)
-				if okSvc then
-					nxt = svc
-				end
-			end
-			if not nxt then
-				return nil
-			end
-			cur = nxt
+		-- "game", "Game", "DataModel" and "Workspace" as the first segment all mean the DataModel root or its child
+		if first and (string.lower(part) == "game" or part == "DataModel") then
+			first = false
+			continue
 		end
+		first = false
+		local nxt = cur:FindFirstChild(part)
+		if not nxt and cur == game then
+			local okSvc, svc = pcall(function()
+				return game:GetService(part)
+			end)
+			if okSvc then
+				nxt = svc
+			end
+		end
+		if not nxt then
+			return nil
+		end
+		cur = nxt
 	end
 	return cur
 end
@@ -2488,7 +2497,7 @@ end)
 -- version check: shows a banner that LINKS to the Get Plugin page. Nothing is downloaded or executed.
 local getPluginUrl = "https://blockyai.onrender.com/#/plugin"
 local function checkVersion()
-	local data = get("plugin-register", "?version=" .. PLUGIN_VERSION)
+	local data = get("plugin-register", { version = PLUGIN_VERSION })
 	if not data then
 		return
 	end

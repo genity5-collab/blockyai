@@ -23,8 +23,10 @@ export function sanitizeConfig(c: any) {
 }
 
 Deno.serve(handle(async (req) => {
+  // The plugin POSTs {version} (the site proxy forwards POST only); a ?version= query still works for curl.
   const u = new URL(req.url);
-  const have = Number(u.searchParams.get("version") ?? 0);
+  const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
+  const have = Math.max(0, Math.floor(Number(body.version ?? u.searchParams.get("version") ?? 0))) || 0;
   let changelog: any[] = [];
   try { const { data } = await admin().from("plugin_releases").select("version,label,changelog").order("version", { ascending: false }).limit(10); changelog = data ?? []; } catch { /* table optional */ }
   return json({ latest_version: LATEST_VERSION, update_available: have > 0 && have < LATEST_VERSION, your_version: have || null, config: sanitizeConfig(CONFIG), changelog });

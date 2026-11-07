@@ -2,6 +2,9 @@
 
 An empty Model, or a model with a handful of parts, is a FAILURE. The server rejects it. Aim for a recognisable object.
 
+## Paths
+Use service names directly: `Workspace.Yacht`, `ServerScriptService`, `ReplicatedStorage.Remotes`, `StarterGui`. `game.` and `Game.` prefixes also work, but never invent a parent called "Game" for a new Folder. Services already exist: create things INSIDE them.
+
 ## Order of work (always)
 1. `plan_create` with a numbered checklist and `target_path` (for example "Workspace.Yacht"). The last items must be verification.
 2. Silhouette: the main body, correct overall size.
