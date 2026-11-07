@@ -1,5 +1,4 @@
 // Anonymous identity. A real auth provider can later replace identity() and send a JWT instead of x-client-key.
-import { CONFIG } from "../config.js";
 const rand = (n) => Array.from(crypto.getRandomValues(new Uint8Array(n)), (b) => b.toString(16).padStart(2, "0")).join("");
 export function identity() {
   let id = localStorage.getItem("blocky_client_id"), key = localStorage.getItem("blocky_client_key");
@@ -9,8 +8,8 @@ export function identity() {
 async function call(path, body, method = "POST", qs = "") {
   const { id, key } = identity();
   const t0 = performance.now();
-  let r; try { r = await fetch(`${CONFIG.url}/functions/v1/${path}${qs}`, {
-    method, headers: { "Content-Type": "application/json", apikey: CONFIG.anon, "x-client-key": key },
+  let r; try { r = await fetch(`/api/${path}${qs}`, {
+    method, headers: { "Content-Type": "application/json", "x-client-key": key },
     body: method === "GET" ? undefined : JSON.stringify({ client_id: id, ...body }),
   }); } catch (e) { return { error: "Can't reach the server. Check your connection.", __ms: null }; }
   const text = await r.text(); let j; try { j = JSON.parse(text); } catch { j = { error: text.slice(0, 200) }; }
