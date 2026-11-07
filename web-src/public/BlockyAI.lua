@@ -1,4 +1,4 @@
--- BlockyAI Studio plugin. Install: save as BlockyAI.lua in %LOCALAPPDATA%\Roblox\Plugins, enable HTTP requests in Game Settings.
+-- BlockyAI Studio plugin. Paste into a Script, right-click it, Save as Local Plugin. Enable Allow HTTP Requests in Game Settings.
 -- Talks ONLY to the BlockyAI Supabase edge functions with a per-session token. No LLM/Freestyle keys live here.
 local HttpService = game:GetService("HttpService")
 local Selection = game:GetService("Selection")

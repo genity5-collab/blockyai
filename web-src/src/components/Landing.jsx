@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Download, Plug, KeyRound, Radar, Check, Plus, ArrowRight, Trash2, Clock } from "lucide-react";
+import { Copy, Plug, KeyRound, Radar, Check, Plus, ArrowRight, Trash2, Clock } from "lucide-react";
 import Logo from "./Logo.jsx"; import { useApp } from "../lib/store.jsx"; import { ago, cx } from "../lib/util.js";
 import PluginModal from "./PluginModal.jsx";
 
@@ -26,7 +26,7 @@ export default function Landing() {
       </div>
 
       <div className="steps">
-        {[[Download, "Install plugin", "Download the plugin and drop it in your Studio Plugins folder.", <button className="brick sm" onClick={() => setShowPlugin(true)}><Download size={15} />Get Plugin</button>],
+        {[[Copy, "Install plugin", "Copy the plugin code and paste it into a Script in Studio.", <button className="brick sm" onClick={() => setShowPlugin(true)}><Copy size={15} />Get Plugin code</button>],
           [Plug, "Enable HTTP requests", "In Studio: Game Settings, Security, turn on Allow HTTP Requests.", null],
           [KeyRound, "Enter pairing code", "Open BlockyAI in Studio and type the 6 character code below.", null]].map(([I, h, p, extra], i) => (
           <div key={i} className="step glass hud" style={{ animationDelay: i * 120 + "ms" }}>
