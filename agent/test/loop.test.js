@@ -25,10 +25,10 @@ test("loop stops at max iterations", async () => {
     tools: { t: { fn: async () => ({ ok: true, result: 1 }) } }, say: async (r, c) => { posted.push(c); return { id: "m" }; }, update: async () => {} });
   assert.match(posted.at(-1), /stopped after 3 steps/);
 });
-test("unknown tool is reported with the raw error, not executed, and the run STOPS", async () => {
+test("unknown tool: first miss goes back to the model, an identical repeat STOPS with the raw error", async () => {
   let n = 0; const posted = [];
   await handleUserMessage([], "go", { llm: async () => { n++; return { content: '<tool>{"name":"run_anything","args":{}}</tool>' }; }, tools: {}, say: async (r, c, tc, st, em) => { posted.push({ c, st, em }); return { id: "m" }; }, update: async () => {} });
-  assert.equal(n, 1, "no second model call after a failure");
+  assert.equal(n, 2, "one retry chance, then stop on the identical repeat");
   assert.match(posted.at(-1).c, /unknown tool run_anything/); assert.equal(posted.at(-1).st, "idle"); assert.equal(posted.at(-1).em[0].type, "warning");
 });
 test("a failed tool shows the RAW error text and ends the run (no fabricated recovery)", async () => {

@@ -17,4 +17,12 @@ export const CMD_META = {
   patch_script: ["Wrench", "Patch script"], batch: ["Layers", "Batch"], playtest_start: ["Play", "Playtest"], playtest_stop: ["Square", "Stop"],
   get_playtest_logs: ["Terminal", "Read output"], screenshot: ["Camera", "Screenshot"], snapshot_save: ["Save", "Snapshot"], snapshot_restore: ["RotateCcw", "Restore"],
   get_selection: ["MousePointerClick", "Selection"], run_lua: ["Zap", "Run Lua"],
+  build_model: ["Hammer", "Build model"], build_from_template: ["Package", "Build template"], template_save: ["Save", "Save template"], template_load: ["Package", "Load template"],
+  duplicate_array: ["Copy", "Duplicate row"], duplicate_grid: ["Grid3x3", "Duplicate grid"], duplicate_along_path: ["Route", "Duplicate on path"], mirror: ["FlipHorizontal", "Mirror"],
+  scale_model: ["Scaling", "Scale"], align: ["AlignCenter", "Align"], distribute: ["Columns", "Distribute"], snap_to_ground: ["ArrowDownToLine", "Snap to ground"],
+  get_bounding_box: ["Box", "Bounding box"], get_pivot: ["Crosshair", "Pivot"], raycast: ["Crosshair", "Raycast"], find_empty_space: ["Search", "Find space"], measure_distance: ["Ruler", "Measure"],
+  camera_set: ["Video", "Camera"], screenshot_multi: ["Camera", "Screenshots"], terrain_fill: ["Mountain", "Terrain"], terrain_heightmap: ["Mountain", "Heightmap"],
+  vm_exec: ["Terminal", "Run in VM"], vm_read_file: ["FileCode", "Read VM file"], vm_write_file: ["FilePen", "Write VM file"], vm_lint_luau: ["ShieldCheck", "Lint Luau"],
+  sync_mirror: ["FolderSync", "Sync mirror"], push_changed: ["FolderSync", "Push changes"], plan_create: ["ListChecks", "Make plan"], plan_update: ["ListChecks", "Update plan"], batch_refs: ["Layers", "Linked batch"],
+  lighting_set: ["Sun", "Lighting"], ui_build: ["LayoutDashboard", "Build UI"], insert_asset: ["Download", "Insert asset"],
 };

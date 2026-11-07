@@ -1,0 +1,333 @@
+{
+ "name": "Boat",
+ "class": "Model",
+ "children": [
+  {
+   "name": "Hull",
+   "class": "Model",
+   "children": [
+    {
+     "name": "Keel",
+     "class": "Part",
+     "size": [
+      8,
+      2,
+      26
+     ],
+     "position": [
+      0,
+      1,
+      0
+     ],
+     "color": "#F5F5F5",
+     "material": "SmoothPlastic"
+    },
+    {
+     "name": "SideL",
+     "class": "Part",
+     "size": [
+      0.8,
+      3,
+      26
+     ],
+     "position": [
+      -4.4,
+      2.5,
+      0
+     ],
+     "color": "#F5F5F5",
+     "material": "SmoothPlastic"
+    },
+    {
+     "name": "SideR",
+     "class": "Part",
+     "size": [
+      0.8,
+      3,
+      26
+     ],
+     "position": [
+      4.4,
+      2.5,
+      0
+     ],
+     "color": "#F5F5F5",
+     "material": "SmoothPlastic"
+    },
+    {
+     "name": "Stern",
+     "class": "Part",
+     "size": [
+      9.6,
+      3,
+      0.8
+     ],
+     "position": [
+      0,
+      2.5,
+      -13.4
+     ],
+     "color": "#F5F5F5",
+     "material": "SmoothPlastic"
+    },
+    {
+     "name": "BowL",
+     "class": "WedgePart",
+     "size": [
+      0.8,
+      3,
+      8
+     ],
+     "position": [
+      -2.2,
+      2.5,
+      17
+     ],
+     "color": "#F5F5F5",
+     "material": "SmoothPlastic",
+     "rotation": [
+      0,
+      0,
+      0
+     ]
+    },
+    {
+     "name": "BowR",
+     "class": "WedgePart",
+     "size": [
+      0.8,
+      3,
+      8
+     ],
+     "position": [
+      2.2,
+      2.5,
+      17
+     ],
+     "color": "#F5F5F5",
+     "material": "SmoothPlastic"
+    },
+    {
+     "name": "BowTip",
+     "class": "WedgePart",
+     "size": [
+      8,
+      2,
+      8
+     ],
+     "position": [
+      0,
+      1,
+      17
+     ],
+     "color": "#F5F5F5",
+     "material": "SmoothPlastic",
+     "rotation": [
+      0,
+      180,
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Deck",
+   "class": "Model",
+   "children": [
+    {
+     "name": "MainDeck",
+     "class": "Part",
+     "size": [
+      8,
+      0.4,
+      26
+     ],
+     "position": [
+      0,
+      4.1,
+      0
+     ],
+     "color": "#B88B4A",
+     "material": "Wood"
+    },
+    {
+     "name": "Foredeck",
+     "class": "Part",
+     "size": [
+      6,
+      0.4,
+      6
+     ],
+     "position": [
+      0,
+      4.1,
+      16
+     ],
+     "color": "#B88B4A",
+     "material": "Wood"
+    }
+   ]
+  },
+  {
+   "name": "Cabin",
+   "class": "Model",
+   "children": [
+    {
+     "name": "CabinBody",
+     "class": "Part",
+     "size": [
+      6,
+      3.4,
+      9
+     ],
+     "position": [
+      0,
+      6,
+      -2
+     ],
+     "color": "#FFFFFF",
+     "material": "SmoothPlastic"
+    },
+    {
+     "name": "CabinRoof",
+     "class": "Part",
+     "size": [
+      6.4,
+      0.4,
+      9.4
+     ],
+     "position": [
+      0,
+      7.9,
+      -2
+     ],
+     "color": "#2B3A55",
+     "material": "Metal"
+    },
+    {
+     "name": "WinL",
+     "class": "Part",
+     "size": [
+      0.2,
+      1.4,
+      6
+     ],
+     "position": [
+      -3.1,
+      6.4,
+      -2
+     ],
+     "color": "#9AD7FF",
+     "material": "Glass",
+     "transparency": 0.4
+    },
+    {
+     "name": "WinR",
+     "class": "Part",
+     "size": [
+      0.2,
+      1.4,
+      6
+     ],
+     "position": [
+      3.1,
+      6.4,
+      -2
+     ],
+     "color": "#9AD7FF",
+     "material": "Glass",
+     "transparency": 0.4
+    },
+    {
+     "name": "WinFront",
+     "class": "Part",
+     "size": [
+      4.6,
+      1.4,
+      0.2
+     ],
+     "position": [
+      0,
+      6.4,
+      2.6
+     ],
+     "color": "#9AD7FF",
+     "material": "Glass",
+     "transparency": 0.4
+    }
+   ]
+  },
+  {
+   "name": "Railings",
+   "class": "Model",
+   "children": [
+    {
+     "name": "RailL",
+     "class": "Part",
+     "size": [
+      0.2,
+      0.5,
+      24
+     ],
+     "position": [
+      -3.7,
+      4.5,
+      0
+     ],
+     "color": "#CFCFCF",
+     "material": "Metal"
+    },
+    {
+     "name": "RailR",
+     "class": "Part",
+     "size": [
+      0.2,
+      0.5,
+      24
+     ],
+     "position": [
+      3.7,
+      4.5,
+      0
+     ],
+     "color": "#CFCFCF",
+     "material": "Metal"
+    }
+   ]
+  },
+  {
+   "name": "Lights",
+   "class": "Model",
+   "children": [
+    {
+     "name": "MastLight",
+     "class": "Part",
+     "size": [
+      0.6,
+      0.6,
+      0.6
+     ],
+     "position": [
+      0,
+      8.5,
+      -2
+     ],
+     "color": "#FFF1C2",
+     "material": "Neon",
+     "shape": "Ball",
+     "children": [
+      {
+       "name": "Light",
+       "class": "PointLight",
+       "properties": {
+        "Brightness": 2,
+        "Range": 30
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "primary_part": "Keel"
+}

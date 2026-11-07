@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Send, Camera, Play, Wrench, Hammer, MousePointerClick, Cuboid, Paperclip, X, FileText, Square, Loader2, Upload } from "lucide-react";
-import { useApp } from "../lib/store.jsx"; import { cx } from "../lib/util.js"; import { CommandCard, BatchCard } from "./Cards.jsx"; import ConfirmModal from "./ConfirmModal.jsx"; import Embeds from "./Embeds.jsx";
+import { useApp } from "../lib/store.jsx"; import { cx } from "../lib/util.js"; import { CommandCard, BatchCard } from "./Cards.jsx"; import ConfirmModal from "./ConfirmModal.jsx"; import Embeds from "./Embeds.jsx"; import { PlanCard, ShotStrip, ModeSwitch } from "./Build.jsx";
 
 function Typewriter({ text, live }) {
   const [n, setN] = useState(live ? 0 : text.length); const ref = useRef(text);
@@ -60,10 +60,12 @@ export default function Chat() {
               {cmdsFor(m).map((c, i) => c.type === "batch" ? <BatchCard key={c.id || i} cmd={c} /> : <CommandCard key={c.id || i} cmd={c} />)}
               <Embeds list={m.embeds} />
             </div></div>))}
+        <PlanCard /><ShotStrip />
         {thinking && <div className="msg ai"><div className="av"><Cuboid size={18} /></div><div className="bub ai-b"><div className="bounce" aria-label="Blocky is thinking"><i /><i /><i /></div></div></div>}
         <div ref={end} />
       </div>
       <div className="composer">
+        <ModeSwitch />
         <div className="chips-row">{CHIPS.map((c) => <button key={c[1]} className="qchip" onClick={() => chip(c)}>{React.createElement(c[0], { size: 14 })}{c[1]}</button>)}
           <button className="qchip sel" onClick={useSel}><MousePointerClick size={14} />Use my Studio selection</button></div>
         {files.length > 0 && <div className="atts" style={{ padding: "0 4px" }}>{files.map((f) => <div className={"att" + (f.uploading ? " up" : "")} key={f.id || f.tmp}>

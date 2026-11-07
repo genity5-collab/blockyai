@@ -1,0 +1,205 @@
+{
+ "name": "Spaceship",
+ "class": "Model",
+ "children": [
+  {
+   "name": "Fuselage",
+   "class": "Part",
+   "size": [
+    6,
+    5,
+    22
+   ],
+   "position": [
+    0,
+    6,
+    0
+   ],
+   "color": "#D7DCE6",
+   "material": "Metal"
+  },
+  {
+   "name": "Nose",
+   "class": "WedgePart",
+   "size": [
+    6,
+    5,
+    8
+   ],
+   "position": [
+    0,
+    6,
+    15
+   ],
+   "color": "#C0162B",
+   "material": "Metal"
+  },
+  {
+   "name": "Cockpit",
+   "class": "Part",
+   "size": [
+    3.4,
+    2,
+    5
+   ],
+   "position": [
+    0,
+    8.6,
+    6
+   ],
+   "color": "#7FD0FF",
+   "material": "Glass",
+   "transparency": 0.35
+  },
+  {
+   "name": "WingL",
+   "class": "WedgePart",
+   "size": [
+    12,
+    0.8,
+    10
+   ],
+   "position": [
+    -9,
+    5,
+    -4
+   ],
+   "color": "#AEB6C6",
+   "material": "Metal",
+   "rotation": [
+    0,
+    90,
+    0
+   ]
+  },
+  {
+   "name": "WingR",
+   "class": "WedgePart",
+   "size": [
+    12,
+    0.8,
+    10
+   ],
+   "position": [
+    9,
+    5,
+    -4
+   ],
+   "color": "#AEB6C6",
+   "material": "Metal",
+   "rotation": [
+    0,
+    -90,
+    0
+   ]
+  },
+  {
+   "name": "EngineL",
+   "class": "Part",
+   "size": [
+    2.4,
+    2.4,
+    5
+   ],
+   "position": [
+    -3.4,
+    5.5,
+    -12
+   ],
+   "color": "#444B5C",
+   "material": "Metal"
+  },
+  {
+   "name": "EngineR",
+   "class": "Part",
+   "size": [
+    2.4,
+    2.4,
+    5
+   ],
+   "position": [
+    3.4,
+    5.5,
+    -12
+   ],
+   "color": "#444B5C",
+   "material": "Metal"
+  },
+  {
+   "name": "FlameL",
+   "class": "Part",
+   "size": [
+    1.8,
+    1.8,
+    3
+   ],
+   "position": [
+    -3.4,
+    5.5,
+    -15.4
+   ],
+   "color": "#00A2FF",
+   "material": "Neon",
+   "children": [
+    {
+     "name": "Light",
+     "class": "PointLight",
+     "properties": {
+      "Brightness": 3,
+      "Range": 22,
+      "Color": "#00A2FF"
+     }
+    }
+   ]
+  },
+  {
+   "name": "FlameR",
+   "class": "Part",
+   "size": [
+    1.8,
+    1.8,
+    3
+   ],
+   "position": [
+    3.4,
+    5.5,
+    -15.4
+   ],
+   "color": "#00A2FF",
+   "material": "Neon"
+  },
+  {
+   "name": "Fin",
+   "class": "WedgePart",
+   "size": [
+    0.6,
+    5,
+    6
+   ],
+   "position": [
+    0,
+    10,
+    -8
+   ],
+   "color": "#C0162B",
+   "material": "Metal"
+  },
+  {
+   "name": "PilotSeat",
+   "class": "Seat",
+   "size": [
+    2,
+    0.6,
+    2
+   ],
+   "position": [
+    0,
+    7,
+    6
+   ],
+   "color": "#222222",
+   "material": "Fabric"
+  }
+ ],
+ "primary_part": "Fuselage"
+}

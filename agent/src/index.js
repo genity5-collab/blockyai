@@ -1,5 +1,5 @@
 import { api } from "./api.js";
-import { handleUserMessage, attachmentContext } from "./loop.js";
+import { clampIterations, handleUserMessage, attachmentContext } from "./loop.js";
 
 // On boot, pick up any user message that has NO assistant reply yet (the user may have typed while the VM was starting).
 // Then poll for new ones. Polling is the reliable path; the web app also polls, so no Realtime dependency.
@@ -28,7 +28,7 @@ async function tick() {
     if (Array.isArray(m.attachment_ids) && m.attachment_ids.length) { try { text += attachmentContext(await api.attachments(m.attachment_ids)); } catch (e) { console.error("attachments:", e.message); } }
     if (!text.trim()) continue;
     try { stopRequested = false;
-      await handleUserMessage(history.slice(-20), text, { maxIterations: sess?.max_iterations ?? 12, shouldStop: async () => { const r = await api.messagesAfter(m.created_at); return Array.isArray(r) && r.some((x) => x.role === "system" && x.content === "__STOP__"); } }); }
+      await handleUserMessage(history.slice(-20), text, { messageId: m.id, maxIterations: clampIterations(sess?.max_iterations), shouldStop: async () => { const r = await api.messagesAfter(m.created_at); return Array.isArray(r) && r.some((x) => x.role === "system" && x.content === "__STOP__"); } }); }
     catch (e) { console.error("handle:", e.message); await api.say("assistant", "Agent error: " + String(e.message).slice(0, 200), null, "error"); }
     history.push({ role: "user", content: text });
   }

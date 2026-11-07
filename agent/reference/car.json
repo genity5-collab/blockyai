@@ -1,0 +1,377 @@
+{
+ "name": "Car",
+ "class": "Model",
+ "children": [
+  {
+   "name": "Body",
+   "class": "Model",
+   "children": [
+    {
+     "name": "Chassis",
+     "class": "Part",
+     "size": [
+      6,
+      1.2,
+      14
+     ],
+     "position": [
+      0,
+      2.2,
+      0
+     ],
+     "color": "#C0162B",
+     "material": "SmoothPlastic"
+    },
+    {
+     "name": "Hood",
+     "class": "Part",
+     "size": [
+      5.6,
+      0.8,
+      4
+     ],
+     "position": [
+      0,
+      3,
+      5
+     ],
+     "color": "#C0162B",
+     "material": "SmoothPlastic"
+    },
+    {
+     "name": "Trunk",
+     "class": "Part",
+     "size": [
+      5.6,
+      0.8,
+      3
+     ],
+     "position": [
+      0,
+      3,
+      -5.5
+     ],
+     "color": "#C0162B",
+     "material": "SmoothPlastic"
+    },
+    {
+     "name": "Cabin",
+     "class": "Part",
+     "size": [
+      5.4,
+      2.2,
+      6
+     ],
+     "position": [
+      0,
+      4,
+      -0.5
+     ],
+     "color": "#C0162B",
+     "material": "SmoothPlastic"
+    },
+    {
+     "name": "Roof",
+     "class": "Part",
+     "size": [
+      5.2,
+      0.4,
+      5.6
+     ],
+     "position": [
+      0,
+      5.3,
+      -0.5
+     ],
+     "color": "#9E1224",
+     "material": "SmoothPlastic"
+    }
+   ]
+  },
+  {
+   "name": "Glass",
+   "class": "Model",
+   "children": [
+    {
+     "name": "Windshield",
+     "class": "Part",
+     "size": [
+      5,
+      2,
+      0.3
+     ],
+     "position": [
+      0,
+      4.2,
+      2.6
+     ],
+     "color": "#9AD7FF",
+     "material": "Glass",
+     "transparency": 0.45,
+     "rotation": [
+      -30,
+      0,
+      0
+     ]
+    },
+    {
+     "name": "RearWindow",
+     "class": "Part",
+     "size": [
+      5,
+      2,
+      0.3
+     ],
+     "position": [
+      0,
+      4.2,
+      -3.6
+     ],
+     "color": "#9AD7FF",
+     "material": "Glass",
+     "transparency": 0.45,
+     "rotation": [
+      30,
+      0,
+      0
+     ]
+    },
+    {
+     "name": "SideL",
+     "class": "Part",
+     "size": [
+      0.3,
+      1.6,
+      5
+     ],
+     "position": [
+      -2.75,
+      4.2,
+      -0.5
+     ],
+     "color": "#9AD7FF",
+     "material": "Glass",
+     "transparency": 0.45
+    },
+    {
+     "name": "SideR",
+     "class": "Part",
+     "size": [
+      0.3,
+      1.6,
+      5
+     ],
+     "position": [
+      2.75,
+      4.2,
+      -0.5
+     ],
+     "color": "#9AD7FF",
+     "material": "Glass",
+     "transparency": 0.45
+    }
+   ]
+  },
+  {
+   "name": "Wheels",
+   "class": "Model",
+   "children": [
+    {
+     "name": "WheelFL",
+     "class": "Part",
+     "size": [
+      3,
+      1.2,
+      3
+     ],
+     "position": [
+      -3.4,
+      1.5,
+      4.5
+     ],
+     "color": "#1A1A1A",
+     "material": "Metal",
+     "shape": "Cylinder",
+     "rotation": [
+      0,
+      0,
+      90
+     ]
+    },
+    {
+     "name": "WheelFR",
+     "class": "Part",
+     "size": [
+      3,
+      1.2,
+      3
+     ],
+     "position": [
+      3.4,
+      1.5,
+      4.5
+     ],
+     "color": "#1A1A1A",
+     "material": "Metal",
+     "shape": "Cylinder",
+     "rotation": [
+      0,
+      0,
+      90
+     ]
+    },
+    {
+     "name": "WheelBL",
+     "class": "Part",
+     "size": [
+      3,
+      1.2,
+      3
+     ],
+     "position": [
+      -3.4,
+      1.5,
+      -4.5
+     ],
+     "color": "#1A1A1A",
+     "material": "Metal",
+     "shape": "Cylinder",
+     "rotation": [
+      0,
+      0,
+      90
+     ]
+    },
+    {
+     "name": "WheelBR",
+     "class": "Part",
+     "size": [
+      3,
+      1.2,
+      3
+     ],
+     "position": [
+      3.4,
+      1.5,
+      -4.5
+     ],
+     "color": "#1A1A1A",
+     "material": "Metal",
+     "shape": "Cylinder",
+     "rotation": [
+      0,
+      0,
+      90
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Lights",
+   "class": "Model",
+   "children": [
+    {
+     "name": "HeadL",
+     "class": "Part",
+     "size": [
+      1,
+      0.8,
+      0.3
+     ],
+     "position": [
+      -2,
+      3,
+      7.1
+     ],
+     "color": "#FFF8D0",
+     "material": "Neon",
+     "children": [
+      {
+       "name": "L",
+       "class": "SpotLight",
+       "properties": {
+        "Brightness": 2,
+        "Range": 30
+       }
+      }
+     ]
+    },
+    {
+     "name": "HeadR",
+     "class": "Part",
+     "size": [
+      1,
+      0.8,
+      0.3
+     ],
+     "position": [
+      2,
+      3,
+      7.1
+     ],
+     "color": "#FFF8D0",
+     "material": "Neon",
+     "children": [
+      {
+       "name": "L",
+       "class": "SpotLight",
+       "properties": {
+        "Brightness": 2,
+        "Range": 30
+       }
+      }
+     ]
+    },
+    {
+     "name": "TailL",
+     "class": "Part",
+     "size": [
+      1,
+      0.6,
+      0.3
+     ],
+     "position": [
+      -2,
+      3,
+      -7.1
+     ],
+     "color": "#FF2B2B",
+     "material": "Neon"
+    },
+    {
+     "name": "TailR",
+     "class": "Part",
+     "size": [
+      1,
+      0.6,
+      0.3
+     ],
+     "position": [
+      2,
+      3,
+      -7.1
+     ],
+     "color": "#FF2B2B",
+     "material": "Neon"
+    }
+   ]
+  },
+  {
+   "name": "Seat",
+   "class": "VehicleSeat",
+   "size": [
+    2,
+    0.6,
+    2
+   ],
+   "position": [
+    0,
+    3.4,
+    0
+   ],
+   "color": "#222222",
+   "material": "Fabric"
+  }
+ ],
+ "primary_part": "Chassis"
+}

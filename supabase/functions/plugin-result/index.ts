@@ -19,17 +19,21 @@ function rgbaToPng(w: number, h: number, rgba: Uint8Array) {
 Deno.serve(handle(async (req) => {
   const { db, session } = await authPlugin(req);
   const b = await req.json();
-  const { command_id, ok, result, error, edit_log, playtest_logs, scripts, screenshot_b64, screenshot_rgba, snapshot } = b;
+  const { command_id, ok, result, error, edit_log, playtest_logs, scripts, screenshot_b64, screenshot_rgba, snapshot, screenshot_label } = b;
   const now = new Date().toISOString();
   if (edit_log?.length) await db.from("edit_log").insert(edit_log.slice(0, 200).map((e: any) => ({ action: e.action, target: e.target, before: e.before ?? null, after: e.after ?? null, source: e.source === "user" ? "user" : (b.batch ? "bulk" : "ai"), batch_id: b.batch ? command_id : null, session_id: session.id, command_id })));
   if (playtest_logs?.length) await db.from("playtest_logs").insert(playtest_logs.slice(0, 500).map((l: any) => ({ ...l, session_id: session.id })));
   for (const sc of scripts ?? []) await db.from("script_mirror").upsert({ session_id: session.id, path: sc.path, class_name: sc.class_name, source: sc.source, updated_at: now });
   if (snapshot) await db.from("snapshots").insert({ session_id: session.id, label: snapshot.label, data: snapshot.data });
   if (screenshot_b64) {
-    const path = `${session.id}/${command_id}.png`;
+    // several angles can come from one command, so the label is part of the file name
+    const label = String(screenshot_label ?? "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 24);
+    const path = `${session.id}/${command_id}${label ? "_" + label : ""}.png`;
     const bin = Uint8Array.from(atob(screenshot_b64), (c) => c.charCodeAt(0));
+    if (bin.length < 8 || bin[0] !== 137 || bin[1] !== 80 || bin[2] !== 78 || bin[3] !== 71) return json({ error: "screenshot is not a PNG" }, 400);
+    if (bin.length > 4_000_000) return json({ error: "screenshot too large" }, 413);
     await db.storage.from("screenshots").upload(path, bin, { contentType: "image/png", upsert: true });
-    await db.from("screenshots").insert({ session_id: session.id, command_id, storage_path: path });
+    await db.from("screenshots").insert({ session_id: session.id, command_id, storage_path: path, label: label || null });
   }
   if (screenshot_rgba?.data && Number(screenshot_rgba.w) > 0 && Number(screenshot_rgba.h) > 0) {
     const w = Math.min(640, Number(screenshot_rgba.w)), h = Math.min(360, Number(screenshot_rgba.h));
@@ -40,6 +44,7 @@ Deno.serve(handle(async (req) => {
       await db.from("screenshots").insert({ session_id: session.id, command_id, storage_path: path });
     }
   }
+  if (screenshot_label && result && (result as any).uploaded) return json({ ok: true });   // extra angle: the command already finished
   await db.from("commands").update({ status: ok ? "done" : "failed", result: result ?? null, error: error ?? null, finished_at: now }).eq("id", command_id).eq("session_id", session.id);
   return json({ ok: true });
 }));

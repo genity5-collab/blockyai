@@ -4,7 +4,9 @@ import { fs } from "../_shared/freestyle.ts";
 // The ONLY door the browser uses. Authorizes by x-client-key (hash compared to sessions.owner_key_hash).
 // Actions: sessions_list, session_create, session_get, session_update, session_delete, poll, send_message,
 //          confirm_command, cancel_command, undo_edit, vm_status, queue (user-issued commands like screenshot/snapshot)
-const FIELDS_OK = new Set(["title", "run_lua_enabled", "max_iterations", "max_batch_size", "live_sync"]);
+const FIELDS_OK = new Set(["title", "run_lua_enabled", "max_iterations", "max_batch_size", "live_sync", "mode", "genre"]);
+const MODES = new Set(["chat", "game"]);
+const GENRES = new Set(["obby", "tycoon", "simulator", "racing", "horror", "rpg", "shooter"]);
 const clamp = (n: unknown, a: number, b: number) => Math.max(a, Math.min(b, Number(n) || a));
 
 Deno.serve(handle(async (req) => {
@@ -33,11 +35,27 @@ Deno.serve(handle(async (req) => {
       await db.from("sessions").update({ pairing_code: code, pairing_expires_at: new Date(Date.now() + 600_000).toISOString() }).eq("id", session.id);
       return json({ pairing_code: code, expires_in: 600 });
     }
+    case "templates_list": {
+      const { data } = await db.from("templates").select("id,name,kind,description,instance_count,session_id,created_at").or(`session_id.is.null${session ? `,session_id.eq.${session.id}` : ""}`).order("name").limit(200);
+      return json((data ?? []).map((t: any) => ({ ...t, builtin: t.session_id === null, session_id: undefined })));
+    }
+    case "template_delete": {
+      need(); const name = String(body.name ?? "");
+      if (!/^[A-Za-z0-9_-]{1,40}$/.test(name)) return json({ error: "bad name" }, 400);
+      await db.from("templates").delete().eq("session_id", session.id).eq("name", name);       // built-ins (session_id null) can never be deleted from the browser
+      return json({ ok: true });
+    }
+    case "plugin_info": {
+      const { data } = await db.from("plugin_releases").select("version,label,changelog,created_at").order("version", { ascending: false }).limit(20);
+      return json({ latest: data?.[0]?.version ?? null, releases: data ?? [] });
+    }
     case "session_get": { need(); return json(publicSession(session)); }
     case "session_update": {
       need(); const patch: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(body.patch ?? {})) if (FIELDS_OK.has(k)) patch[k] = v;
-      if ("max_iterations" in patch) patch.max_iterations = clamp(patch.max_iterations, 1, 40);
+      if ("max_iterations" in patch) patch.max_iterations = clamp(patch.max_iterations, 1, 80);
+      if ("mode" in patch && !MODES.has(String(patch.mode))) delete patch.mode;
+      if ("genre" in patch) patch.genre = GENRES.has(String(patch.genre)) ? patch.genre : null;
       if ("max_batch_size" in patch) patch.max_batch_size = clamp(patch.max_batch_size, 1, 100);
       if ("title" in patch) patch.title = String(patch.title).slice(0, 60);
       const { data } = await db.from("sessions").update(patch).eq("id", session.id).select().single();
@@ -52,7 +70,7 @@ Deno.serve(handle(async (req) => {
     // One cursor-based poll returns everything the HUD needs. Cheap, and no table is exposed to the browser.
     case "poll": {
       need(); const c = body.cursors ?? {};
-      const [msgs, cmds, edits, logs, shots, snaps, atts] = await Promise.all([
+      const [msgs, cmds, edits, logs, shots, snaps, atts, plan, calls] = await Promise.all([
         db.from("messages").select("*").eq("session_id", session.id).order("created_at").limit(300),
         db.from("commands").select("id,type,payload,status,result,error,needs_confirm,confirmed,created_at,finished_at").eq("session_id", session.id).order("created_at", { ascending: false }).limit(60),
         db.from("edit_log").select("*").eq("session_id", session.id).order("created_at", { ascending: false }).limit(150),
@@ -60,11 +78,13 @@ Deno.serve(handle(async (req) => {
         db.from("screenshots").select("*").eq("session_id", session.id).order("created_at", { ascending: false }).limit(24),
         db.from("snapshots").select("id,label,created_at").eq("session_id", session.id).order("created_at", { ascending: false }).limit(30),
         db.from("attachments").select("id,kind,name,mime,size,description,created_at").eq("session_id", session.id).order("created_at").limit(60),
+        db.from("agent_plans").select("id,title,items,status,target_path,updated_at").eq("session_id", session.id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+        db.from("tool_calls").select("id,name,family,ok,error,duration_ms,args_summary,created_at").eq("session_id", session.id).order("created_at", { ascending: false }).limit(60),
       ]);
       const shotsOut = [];
-      for (const s of shots.data ?? []) { const { data: sig } = await db.storage.from("screenshots").createSignedUrl(s.storage_path, 900); shotsOut.push({ id: s.id, created_at: s.created_at, url: sig?.signedUrl }); }
+      for (const s of shots.data ?? []) { const { data: sig } = await db.storage.from("screenshots").createSignedUrl(s.storage_path, 900); shotsOut.push({ id: s.id, created_at: s.created_at, label: s.label ?? null, command_id: s.command_id, url: sig?.signedUrl }); }
       const online = !!session.plugin_last_seen_at && Date.now() - new Date(session.plugin_last_seen_at).getTime() < 30_000;
-      return json({ session: publicSession(session), plugin_online: online, messages: msgs.data, commands: cmds.data, edit_log: edits.data, playtest_logs: logs.data, screenshots: shotsOut, snapshots: snaps.data, attachments: atts.data, server_time: Date.now() });
+      return json({ session: publicSession(session), plugin_online: online, messages: msgs.data, commands: cmds.data, edit_log: edits.data, playtest_logs: logs.data, screenshots: shotsOut, snapshots: snaps.data, attachments: atts.data, plan: plan.data ?? null, tool_calls: calls.data ?? [], server_time: Date.now() });
     }
 
     // ---- attachments: images (described by qwen25-vl + OCR paddleocr-vl, both self-hosted) and text/code files ----

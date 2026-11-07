@@ -23,8 +23,13 @@ export const ALLOWED = new Set([
   "get_tree","find","set_properties","create","delete","move","read_script","write_script","patch_script",
   "batch","playtest_start","playtest_stop","get_playtest_logs","screenshot","snapshot_save","snapshot_restore",
   "get_selection","run_lua",
+  // build + transform + query (all pure Studio edits, undoable through one waypoint each)
+  "build_model","build_from_template","template_save","template_load",
+  "duplicate_array","duplicate_grid","duplicate_along_path","mirror","scale_model","align","distribute","snap_to_ground",
+  "get_bounding_box","get_pivot","raycast","find_empty_space","measure_distance",
+  "camera_set","screenshot_multi","terrain_fill","terrain_heightmap","lighting_set","ui_build","insert_asset",
 ]);
-export const DESTRUCTIVE = new Set(["delete","snapshot_restore","batch","run_lua"]);
+export const DESTRUCTIVE = new Set(["delete","snapshot_restore","batch","run_lua","terrain_fill","terrain_heightmap","insert_asset"]);
 
 // Auth for the VM: scoped, short-lived, bound to ONE session.
 export async function authAgent(req: Request) {

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { History, Terminal, Image as Img, Undo2, Pause, Play, Download, Search, ChevronRight, Trash2, ArrowDownToLine, Sparkles, Columns2 } from "lucide-react";
-import Icon from "./Icon.jsx"; import { useApp } from "../lib/store.jsx"; import { web } from "../lib/api.js"; import { clock, cx } from "../lib/util.js"; import ScriptViewer from "./ScriptViewer.jsx";
+import { History, Terminal, Image as Img, Undo2, Pause, Play, Download, Search, ChevronRight, Trash2, ArrowDownToLine, Sparkles, Columns2, Package } from "lucide-react";
+import Icon from "./Icon.jsx"; import { useApp } from "../lib/store.jsx"; import { web } from "../lib/api.js"; import { clock, cx } from "../lib/util.js"; import ScriptViewer from "./ScriptViewer.jsx"; import { Templates } from "./Build.jsx";
 
 const SRC = { ai: ["violet", "AI"], user: ["green", "USER"], bulk: ["amber", "BULK"] };
 const ACT = { set: "SlidersHorizontal", create: "Box", delete: "Trash2", move: "Move", write_script: "FilePen", patch_script: "Wrench" };
@@ -52,7 +52,7 @@ function Console() {
 function Shots() {
   const { data, sid, send } = useApp(); const [lb, setLb] = useState(null); const [cmp, setCmp] = useState(false); const shots = data?.screenshots ?? [];
   return (<div className="pane"><div className="list">
-    {shots.length === 0 && <div className="empty"><Img size={34} color="var(--blue)" /><h4>No screenshots</h4><p>Ask Blocky to take one. Note: Studio plugins can't capture images, so this stays empty unless you upload from your side.</p></div>}
+    {shots.length === 0 && <div className="empty"><Img size={34} color="var(--blue)" /><h4>No screenshots</h4><p>Ask Blocky to build something and it will look at it from several angles. Studio asks you to allow screenshots once; if you decline, Blocky falls back to a text description.</p></div>}
     <div className="masonry">{shots.map((s) => <button key={s.id} className="shot" onClick={() => { setLb(s); setCmp(false); }}><img src={s.url} alt={"Screenshot " + clock(s.created_at)} loading="lazy" /></button>)}</div></div>
     {lb && <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && setLb(null)}><div className="modal glass hud" style={{ width: "min(1000px,100%)" }}>
       <div className="modal-h"><b style={{ flex: 1 }}>{clock(lb.created_at)}</b>
@@ -68,6 +68,6 @@ function Compare({ a, b }) { const [p, setP] = useState(50);
 export default function RightPanel({ forceTab }) {
   const { data } = useApp(); const [t, setT] = useState("log"); const tab = forceTab || t; const errs = (data?.playtest_logs ?? []).filter((l) => l.level === "error").length;
   return (<div className="rp"><div className="tabs" role="tablist">
-    {[["log", History, "Edit log"], ["console", Terminal, "Console"], ["shots", Img, "Shots"]].map(([k, I, n]) => <button key={k} role="tab" aria-selected={tab === k} className={cx("tab", tab === k && "on")} onClick={() => setT(k)}><I size={15} />{n}{k === "console" && errs > 0 && <span className="badge">{errs}</span>}</button>)}</div>
-    {tab === "log" && <EditLog />}{tab === "console" && <Console />}{tab === "shots" && <Shots />}</div>);
+    {[["log", History, "Edit log"], ["console", Terminal, "Console"], ["shots", Img, "Shots"], ["tpl", Package, "Templates"]].map(([k, I, n]) => <button key={k} role="tab" aria-selected={tab === k} className={cx("tab", tab === k && "on")} onClick={() => setT(k)}><I size={15} />{n}{k === "console" && errs > 0 && <span className="badge">{errs}</span>}</button>)}</div>
+    {tab === "log" && <EditLog />}{tab === "console" && <Console />}{tab === "shots" && <Shots />}{tab === "tpl" && <Templates />}</div>);
 }

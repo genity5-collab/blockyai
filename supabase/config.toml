@@ -36,3 +36,24 @@ verify_jwt = false
 
 [functions.web-api]
 verify_jwt = false
+
+[functions.vm-verify]
+verify_jwt = false
+
+[functions.agent-toolcall]
+verify_jwt = false
+
+[functions.agent-plan]
+verify_jwt = false
+
+[functions.agent-template]
+verify_jwt = false
+
+[functions.plugin-chat]
+verify_jwt = false
+
+[functions.plugin-register]
+verify_jwt = false
+
+[functions.capability-test]
+verify_jwt = false

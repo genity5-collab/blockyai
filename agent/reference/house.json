@@ -1,0 +1,346 @@
+{
+ "name": "House",
+ "class": "Model",
+ "children": [
+  {
+   "name": "Foundation",
+   "class": "Model",
+   "children": [
+    {
+     "name": "Slab",
+     "class": "Part",
+     "size": [
+      40,
+      1,
+      30
+     ],
+     "position": [
+      0,
+      0.5,
+      0
+     ],
+     "color": "#8A8A8A",
+     "material": "Concrete"
+    }
+   ]
+  },
+  {
+   "name": "Walls",
+   "class": "Model",
+   "children": [
+    {
+     "name": "WallBack",
+     "class": "Part",
+     "size": [
+      40,
+      14,
+      1
+     ],
+     "position": [
+      0,
+      8,
+      -14.5
+     ],
+     "color": "#E8DCC8",
+     "material": "Brick"
+    },
+    {
+     "name": "WallLeft",
+     "class": "Part",
+     "size": [
+      1,
+      14,
+      30
+     ],
+     "position": [
+      -19.5,
+      8,
+      0
+     ],
+     "color": "#E8DCC8",
+     "material": "Brick"
+    },
+    {
+     "name": "WallRight",
+     "class": "Part",
+     "size": [
+      1,
+      14,
+      30
+     ],
+     "position": [
+      19.5,
+      8,
+      0
+     ],
+     "color": "#E8DCC8",
+     "material": "Brick"
+    },
+    {
+     "name": "WallFrontLeft",
+     "class": "Part",
+     "size": [
+      14,
+      14,
+      1
+     ],
+     "position": [
+      -13,
+      8,
+      14.5
+     ],
+     "color": "#E8DCC8",
+     "material": "Brick"
+    },
+    {
+     "name": "WallFrontRight",
+     "class": "Part",
+     "size": [
+      14,
+      14,
+      1
+     ],
+     "position": [
+      13,
+      8,
+      14.5
+     ],
+     "color": "#E8DCC8",
+     "material": "Brick"
+    },
+    {
+     "name": "WallFrontTop",
+     "class": "Part",
+     "size": [
+      12,
+      7,
+      1
+     ],
+     "position": [
+      0,
+      11.5,
+      14.5
+     ],
+     "color": "#E8DCC8",
+     "material": "Brick"
+    },
+    {
+     "name": "WinSillL",
+     "class": "Part",
+     "size": [
+      6,
+      3,
+      1
+     ],
+     "position": [
+      -13,
+      3.5,
+      14.6
+     ],
+     "color": "#E8DCC8",
+     "material": "Brick"
+    }
+   ]
+  },
+  {
+   "name": "Roof",
+   "class": "Model",
+   "children": [
+    {
+     "name": "RoofSlabL",
+     "class": "Part",
+     "size": [
+      22,
+      1,
+      32
+     ],
+     "position": [
+      -9,
+      19,
+      0
+     ],
+     "color": "#7A3B2E",
+     "material": "Slate",
+     "rotation": [
+      0,
+      0,
+      25
+     ]
+    },
+    {
+     "name": "RoofSlabR",
+     "class": "Part",
+     "size": [
+      22,
+      1,
+      32
+     ],
+     "position": [
+      9,
+      19,
+      0
+     ],
+     "color": "#7A3B2E",
+     "material": "Slate",
+     "rotation": [
+      0,
+      0,
+      -25
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Door",
+   "class": "Model",
+   "children": [
+    {
+     "name": "DoorPanel",
+     "class": "Part",
+     "size": [
+      4,
+      7,
+      0.4
+     ],
+     "position": [
+      0,
+      4.5,
+      14.2
+     ],
+     "color": "#5A3A22",
+     "material": "Wood",
+     "children": [
+      {
+       "name": "Prompt",
+       "class": "ProximityPrompt",
+       "action_text": "Open",
+       "object_text": "Door",
+       "distance": 8
+      }
+     ]
+    },
+    {
+     "name": "Knob",
+     "class": "Part",
+     "size": [
+      0.4,
+      0.4,
+      0.4
+     ],
+     "position": [
+      1.4,
+      4.5,
+      14.5
+     ],
+     "color": "#C9A227",
+     "material": "Metal",
+     "shape": "Ball"
+    },
+    {
+     "name": "DoorScript",
+     "class": "Script",
+     "source": "local panel = script.Parent.DoorPanel\nlocal prompt = panel:WaitForChild(\"Prompt\")\nlocal open = false\nlocal closed = panel.CFrame\nprompt.Triggered:Connect(function()\n\topen = not open\n\tpanel.CFrame = open and closed * CFrame.new(3.5, 0, 0) or closed\n\tprompt.ActionText = open and \"Close\" or \"Open\"\nend)\n"
+    }
+   ]
+  },
+  {
+   "name": "Windows",
+   "class": "Model",
+   "children": [
+    {
+     "name": "WindowL",
+     "class": "Part",
+     "size": [
+      6,
+      4,
+      0.3
+     ],
+     "position": [
+      -13,
+      9,
+      14.3
+     ],
+     "color": "#9AD7FF",
+     "material": "Glass",
+     "transparency": 0.4
+    },
+    {
+     "name": "WindowR",
+     "class": "Part",
+     "size": [
+      6,
+      4,
+      0.3
+     ],
+     "position": [
+      13,
+      9,
+      14.3
+     ],
+     "color": "#9AD7FF",
+     "material": "Glass",
+     "transparency": 0.4
+    }
+   ]
+  },
+  {
+   "name": "Lights",
+   "class": "Model",
+   "children": [
+    {
+     "name": "LampBase",
+     "class": "Part",
+     "size": [
+      1,
+      1,
+      1
+     ],
+     "position": [
+      0,
+      13,
+      -13.6
+     ],
+     "color": "#FFF1C2",
+     "material": "Neon",
+     "children": [
+      {
+       "name": "Light",
+       "class": "PointLight",
+       "properties": {
+        "Brightness": 2,
+        "Range": 24
+       }
+      }
+     ]
+    },
+    {
+     "name": "PorchLamp",
+     "class": "Part",
+     "size": [
+      0.8,
+      0.8,
+      0.8
+     ],
+     "position": [
+      4,
+      10,
+      15
+     ],
+     "color": "#FFF1C2",
+     "material": "Neon",
+     "children": [
+      {
+       "name": "Light",
+       "class": "PointLight",
+       "properties": {
+        "Brightness": 1.5,
+        "Range": 14
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "primary_part": "Slab"
+}

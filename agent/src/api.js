@@ -24,5 +24,8 @@ export const api = {
   command: (type, payload) => call("agent-command", { method: "POST", body: JSON.stringify({ type, payload }) }),
   result: (id) => call(`agent-result?id=${id}`),
   data: (kind, limit = 100) => call(`agent-data?kind=${kind}&limit=${limit}`),
+  plan: (action, body = {}) => call("agent-plan", { method: "POST", body: JSON.stringify({ action, ...body }) }),
+  template: (action, body = {}) => call("agent-template", { method: "POST", body: JSON.stringify({ action, ...body }) }),
+  logToolCall: (row) => call("agent-toolcall", { method: "POST", body: JSON.stringify(row) }),
   llm: (messages, model = "qwen-coder") => call("llm-proxy", { method: "POST", body: JSON.stringify({ model, messages, max_tokens: 3500 }) }),
 };

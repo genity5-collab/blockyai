@@ -1,0 +1,117 @@
+{
+ "name": "Tree",
+ "class": "Model",
+ "children": [
+  {
+   "name": "Trunk",
+   "class": "Part",
+   "size": [
+    2,
+    12,
+    2
+   ],
+   "position": [
+    0,
+    6,
+    0
+   ],
+   "color": "#6B4A2B",
+   "material": "Wood",
+   "shape": "Cylinder"
+  },
+  {
+   "name": "Leaves1",
+   "class": "Part",
+   "size": [
+    14,
+    6,
+    14
+   ],
+   "position": [
+    0,
+    15,
+    0
+   ],
+   "color": "#2F7D3A",
+   "material": "Grass",
+   "shape": "Ball"
+  },
+  {
+   "name": "Leaves2",
+   "class": "Part",
+   "size": [
+    10,
+    5,
+    10
+   ],
+   "position": [
+    3,
+    19,
+    2
+   ],
+   "color": "#3A9148",
+   "material": "Grass",
+   "shape": "Ball"
+  },
+  {
+   "name": "Leaves3",
+   "class": "Part",
+   "size": [
+    9,
+    5,
+    9
+   ],
+   "position": [
+    -3,
+    18,
+    -2
+   ],
+   "color": "#2A6E33",
+   "material": "Grass",
+   "shape": "Ball"
+  },
+  {
+   "name": "Root1",
+   "class": "Part",
+   "size": [
+    1,
+    1,
+    3
+   ],
+   "position": [
+    1.2,
+    0.5,
+    1.2
+   ],
+   "color": "#6B4A2B",
+   "material": "Wood",
+   "rotation": [
+    0,
+    40,
+    0
+   ]
+  },
+  {
+   "name": "Root2",
+   "class": "Part",
+   "size": [
+    1,
+    1,
+    3
+   ],
+   "position": [
+    -1.2,
+    0.5,
+    -1
+   ],
+   "color": "#6B4A2B",
+   "material": "Wood",
+   "rotation": [
+    0,
+    -30,
+    0
+   ]
+  }
+ ],
+ "primary_part": "Trunk"
+}

@@ -7,9 +7,9 @@ Web app -> Supabase (messages) -> Freestyle VM agent -> edge functions -> Roblox
 | Folder | What |
 |---|---|
 | `web-src/` | React + Vite web app (Render builds it to `dist/`). Only the public anon key. |
-| `plugin/` | Roblox Studio plugin (pairing, allowlisted commands, edit log). |
+| `plugin/` | Roblox Studio plugin. Source modules in `src/`, tested with `node run-tests.mjs`, bundled into one pasteable file with `node build.mjs`. |
 | `agent/` | Agent runtime that runs inside the VM (loop, tools, Luau lint). |
-| `supabase/` | Schema migration + 12 edge functions. |
+| `supabase/` | Migrations 0001-0007 + 19 edge functions (plans, templates, plugin chat/versioning, capability tests). |
 
 ## Secrets (server-side only, Supabase secrets)
 `FREESTYLE_API_KEY`, `BLOCKY_LLM_API_KEY` (Free.ai), `CRON_SECRET`, `BLOCKYAI_SNAPSHOT_ID`. Never in `web/`, `plugin/`, or the VM. The VM only gets a session-bound, 4h token (`BLOCKY_AGENT_TOKEN`) and calls the LLM through `llm-proxy` (self-hosted Free.ai models only; non-`self_hosted` replies are refused).
@@ -25,4 +25,8 @@ Web app -> Supabase (messages) -> Freestyle VM agent -> edge functions -> Roblox
 Allowlisted command types only; `run_lua` off unless enabled in the plugin; destructive commands auto-snapshot first; per-minute command cap, batch cap, iteration cap, VM lifetime cap. Game content is wrapped as `<untrusted_game_data>` and treated as data only.
 
 ## Known limits
-Roblox plugins cannot press Play or capture screenshots; the agent asks the user to press Play and reads captured Output.
+- Screenshots use Roblox's `StudioCaptureService`. Studio asks the user to allow it once; if declined, the agent falls back to a text scene report and says so. Untested in a real Studio from this repo.
+- Playtests run through `StudioTestService` (single-player only). Multiplayer / Team Test is not available to plugins.
+- `build_model` cannot create unions (CSG) or MeshParts from a spec; use stacked parts or `insert_asset`.
+- The plugin never downloads or runs remote code. The server sends data only (commands for an allowlist, a validated JSON theme, a version number).
+- The 5 capability tests (`/#/capability`) need a real paired Studio. Their pass/fail comes from recorded tool results, never from the agent's own claims.
