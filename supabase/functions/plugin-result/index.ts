@@ -1,4 +1,5 @@
 import { authPlugin, handle, json } from "../_shared/lib.ts";
+import { capResult } from "../_shared/policy.js";
 import { deflate } from "https://deno.land/x/compress@v0.4.5/zlib/mod.ts";
 
 // Encode raw RGBA (w*h*4 bytes) as a PNG. Plugins send tiny raw frames; the server does the compression.
@@ -44,7 +45,11 @@ Deno.serve(handle(async (req) => {
       await db.from("screenshots").insert({ session_id: session.id, command_id, storage_path: path });
     }
   }
-  if (screenshot_label && result && (result as any).uploaded) return json({ ok: true });   // extra angle: the command already finished
-  await db.from("commands").update({ status: ok ? "done" : "failed", result: result ?? null, error: error ?? null, finished_at: now }).eq("id", command_id).eq("session_id", session.id);
-  return json({ ok: true });
+  if (screenshot_label && result && (result as any).uploaded) return json({ ok: true, state: "extra_angle" });   // extra angle: the command already finished
+  // 64 KB cap: the plugin may send more; the server keeps at most 64 KB and says so (truncated + next_cursor). The agent can ask for the next page.
+  const capped = capResult(result ?? null);
+  const stored = capped.truncated ? { ...(Array.isArray(capped.value) ? { items: capped.value } : { value: capped.value }), truncated: true, next_cursor: capped.next_cursor, total_bytes: capped.bytes } : (result ?? null);
+  const { data: state, error: ferr } = await db.rpc("finish_command", { p_session: session.id, p_id: command_id, p_ok: !!ok, p_result: stored, p_error: error ? String(error).slice(0, 4000) : null, p_truncated: capped.truncated, p_bytes: capped.bytes });
+  if (ferr) return json({ error: ferr.message }, 500);
+  return json({ ok: true, state });   // state 'duplicate' = a result was already recorded (first writer wins)
 }));

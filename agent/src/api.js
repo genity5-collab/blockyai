@@ -21,7 +21,7 @@ export const api = {
   update: (id, content, tool_calls, embeds, state) => call("agent-messages", { method: "POST", body: JSON.stringify({ id, content, tool_calls, embeds, state }) }),
   attachments: (ids) => call(`agent-data?kind=attachments&ids=${ids.join(",")}`),
   setState: (state) => call("agent-messages", { method: "POST", body: JSON.stringify({ state }) }),
-  command: (type, payload) => call("agent-command", { method: "POST", body: JSON.stringify({ type, payload }) }),
+  command: (type, payload, idempotency_key) => call("agent-command", { method: "POST", body: JSON.stringify({ type, idempotency_key, payload }) }),
   result: (id) => call(`agent-result?id=${id}`),
   data: (kind, limit = 100) => call(`agent-data?kind=${kind}&limit=${limit}`),
   plan: (action, body = {}) => call("agent-plan", { method: "POST", body: JSON.stringify({ action, ...body }) }),

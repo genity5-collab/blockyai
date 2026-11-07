@@ -25,7 +25,7 @@ export const toolFamily = (name) => (String(name).startsWith("roblox_") ? "roblo
 export const MAX_GATE_REJECTIONS = 6;
 export const MAX_CONSECUTIVE_FAILURES = 4;
 // These mean nothing more can be done by trying again, so the run ends and the raw error is shown.
-export const HARD_FAILURE = /plugin did not respond|waiting for user confirmation|LLM error|http 401|invalid or expired token|VM is not running/i;
+export const HARD_FAILURE = /plugin not responding|plugin did not respond|waiting for user confirmation|LLM error|http 401|invalid or expired token|VM is not running/i;
 export const DEFAULT_BUILD_ITERATIONS = 40;
 export const HARD_ITERATION_CAP = 80;
 export const clampIterations = (n, fallback = DEFAULT_BUILD_ITERATIONS) => Math.max(4, Math.min(Number.isFinite(+n) && +n > 0 ? Math.floor(+n) : fallback, HARD_ITERATION_CAP));

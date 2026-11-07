@@ -8,17 +8,39 @@ const sh = promisify(execFile);
 export const WORK = "/home/ubuntu/project";
 const SANDBOX = WORK;
 
-// Wait for a Studio command to finish (long-poll, up to ~2 min).
-export async function run(type, payload) {
-  const q = await api.command(type, payload);
+// Wait for a Studio command to finish. The queue tells us WHY it is not finished, and the two cases need different answers:
+//   status "queued"  = nobody claimed it     -> the plugin is not polling: "plugin not responding" (Studio closed, not paired, wrong place)
+//   status "claimed" = taken, no ACK yet     -> starting up; keep waiting a little
+//   status "running" = the plugin ACKed it   -> "plugin busy": it is working, wait up to the command's own timeout
+// Wait budgets come from the server (timeout_s) instead of one fixed number for every command.
+import { randomUUID as _uuid } from "node:crypto";
+export const NO_ACK_WAIT_MS = 45_000;      // how long a command may sit unclaimed before we call the plugin unresponsive
+export function describeWait(q) {
+  if (q.needs_confirm && !q.confirmed) return "waiting for user confirmation";
+  if (q.status === "running") return "plugin busy";
+  if (q.status === "claimed") return "plugin claimed the command but has not acknowledged it";
+  return "plugin not responding";
+}
+export async function run(type, payload, opts = {}) {
+  const key = opts.idempotency_key ?? _uuid();
+  const q = await api.command(type, payload, key);
   if (q.error) return { ok: false, error: q.error };
-  const end = Date.now() + 120_000;
-  while (Date.now() < end) {
+  const startedAt = Date.now();
+  let last = { status: q.status, needs_confirm: q.needs_confirm, confirmed: false };
+  // the overall deadline is the command's own timeout (+ slack) once it is running; before that, the no-ack window
+  let deadline = startedAt + NO_ACK_WAIT_MS;
+  while (Date.now() < deadline) {
     const r = await api.result(q.id);
-    if (r.status === "done") return { ok: true, result: r.result };
-    if (r.status === "failed" || r.status === "cancelled") return { ok: false, error: r.error ?? r.status };
+    last = r;
+    if (r.status === "done") return { ok: true, result: r.result, truncated: !!r.result_truncated, command_id: q.id };
+    if (r.status === "failed") return { ok: false, error: r.error ?? "failed", command_id: q.id };
+    if (r.status === "cancelled") return { ok: false, error: "cancelled by the user", command_id: q.id };
+    if (r.status === "expired") return { ok: false, error: `${r.error ?? "command expired"} (plugin not responding: it never finished the command after ${r.attempts ?? "several"} attempt(s))`, command_id: q.id, expired: true };
+    if (r.status === "running") deadline = Math.max(deadline, (r.acked_at ? new Date(r.acked_at).getTime() : Date.now()) + ((r.timeout_s ?? 60) + 15) * 1000);   // acked: busy, not dead
+    else if (r.needs_confirm && !r.confirmed) deadline = Math.max(deadline, startedAt + 120_000);                                                      // waiting on a human
+    else if (r.status === "claimed") deadline = Math.max(deadline, Date.now() + 20_000);
   }
-  return { ok: false, error: q.needs_confirm ? "waiting for user confirmation (timed out)" : "plugin did not respond (is Studio open and paired?)" };
+  return { ok: false, error: `${describeWait(last)} (command ${q.id}, state ${last.status}, waited ${Math.round((Date.now() - startedAt) / 1000)}s)`, command_id: q.id, state: last.status };
 }
 
 const safe = (p) => String(p).replace(/[^A-Za-z0-9_./ -]/g, "_").replace(/\.\.+/g, "_");
