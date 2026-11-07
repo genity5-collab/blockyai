@@ -18,6 +18,11 @@ const walk = (d) => readdirSync(d).flatMap((n) => { const p = join(d, n); if (n 
 const files = walk(ROOT).filter((p) => !p.includes("/test/") && !p.endsWith("bootstrap-vm.sh"));
 await sh("sudo mkdir -p /opt/blockyai/agent && sudo chown -R ubuntu:ubuntu /opt/blockyai && mkdir -p /home/ubuntu/project");
 for (const p of files) { const rel = relative(ROOT, p); await sh(`mkdir -p /opt/blockyai/agent/$(dirname ${rel})`); await vm.fs.writeFile("/opt/blockyai/agent/" + rel, readFileSync(p, "utf8")); }
+// Shared server files the agent imports from outside agent/ (e.g. policy.js). They must sit at the SAME relative path on the VM
+// (/opt/blockyai/supabase/functions/_shared/...), or the agent crashes at start. test/phase1-bakedeps.test.js keeps this list honest.
+const SHARED = ["supabase/functions/_shared/policy.js"];
+await sh("mkdir -p /opt/blockyai/supabase/functions/_shared");
+for (const f of SHARED) await vm.fs.writeFile("/opt/blockyai/" + f, readFileSync(ROOT + "/../" + f, "utf8"));
 // tests too, but kept outside the service path, to run them here
 // acceptance.test.js judges SERVER code (supabase/functions/_shared) that is not on the VM, so it stays in the repo and is not baked.
 const tests = readdirSync(ROOT + "/test").filter((n) => n.endsWith(".js") && !n.startsWith(".") && n !== "acceptance.test.js");
@@ -43,6 +48,8 @@ await vm.fs.writeFile("/tmp/blockyai-agent.service", "[Unit]\nDescription=Blocky
 console.log("svc:", (await sh("sudo mv /tmp/blockyai-agent.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable blockyai-agent 2>&1 | tail -1; sudo touch /etc/blockyai.env; sudo chmod 600 /etc/blockyai.env")).out);
 
 // 6. snapshot with NO arguments (standing rule), then delete the builder
-const { snapshotId } = await vm.snapshot();
+let snapshotId;
+try { ({ snapshotId } = await vm.snapshot()); }
+catch (e) { console.log("SNAPSHOT FAILED:", String(e?.message ?? e).slice(0, 200)); try { await vm.delete(); console.log("builder deleted"); } catch {} process.exit(1); }   // never leak the builder VM
 console.log("SNAPSHOT_ID", snapshotId);
 await vm.delete(); console.log("builder deleted");
