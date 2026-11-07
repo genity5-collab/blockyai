@@ -24,8 +24,6 @@ verify_jwt = false
 [functions.plugin-result]
 verify_jwt = false
 
-[functions.pair-create]
-verify_jwt = false
 
 [functions.vm-start]
 verify_jwt = false
@@ -34,4 +32,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.vm-status]
+verify_jwt = false
+
+[functions.web-api]
 verify_jwt = false

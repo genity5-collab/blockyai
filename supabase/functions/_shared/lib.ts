@@ -5,7 +5,8 @@ export const admin = () =>
 
 export const cors = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-agent-token, x-plugin-token",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-agent-token, x-plugin-token, x-client-key",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 export const json = (b: unknown, status = 200) =>
   new Response(JSON.stringify(b), { status, headers: { ...cors, "Content-Type": "application/json" } });
@@ -57,4 +58,22 @@ export const handle = (fn: (req: Request) => Promise<Response>) => async (req: R
   try { return await fn(req); }
   catch (e) { if (e instanceof Response) return new Response(await e.text(), { status: e.status, headers: cors });
     return json({ error: String((e as Error).message ?? e) }, 500); }
+};
+
+// ---- Anonymous owner auth (swap point for real auth later: accept a JWT here and map it to an owner id) ----
+export async function ownerHash(req: Request) {
+  const key = req.headers.get("x-client-key") ?? "";
+  if (key.length < 24 || key.length > 128) throw new Response("missing client key", { status: 401 });
+  return await sha256("ck:" + key);
+}
+export async function authOwner(req: Request, sessionId?: string | null) {
+  const db = admin(); const oh = await ownerHash(req);
+  if (!sessionId) return { db, oh, session: null as any };
+  const { data: s } = await db.from("sessions").select("*").eq("id", sessionId).eq("owner_key_hash", oh).maybeSingle();
+  if (!s) throw new Response("session not found", { status: 404 });
+  return { db, oh, session: s };
+}
+// Never return secrets to the browser.
+export const publicSession = (s: any) => {
+  const { plugin_token_hash, agent_token_hash, agent_token_expires_at, owner_key_hash, pairing_code, vm_id, ...rest } = s; return rest;
 };

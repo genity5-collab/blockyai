@@ -1,4 +1,4 @@
-import { authUser, handle, json, admin } from "../_shared/lib.ts";
+import { authOwner, handle, json, admin } from "../_shared/lib.ts";
 import { fs, IDLE_SUSPEND_MIN } from "../_shared/freestyle.ts";
 
 // mode: "suspend" | "destroy". With no auth header + cron secret it sweeps idle / expired sessions.
@@ -20,8 +20,7 @@ Deno.serve(handle(async (req) => {
     for (const s of old ?? []) await kill(s, "destroy");
     return json({ suspended: idle?.length ?? 0, destroyed: old?.length ?? 0 });
   }
-  const { user } = await authUser(req);
-  const { data: s } = await db.from("sessions").select("*").eq("id", body.session_id).eq("user_id", user.id).maybeSingle();
+  const { session: s } = await authOwner(req, body.session_id);
   if (!s) return json({ error: "session not found" }, 404);
   await kill(s, body.mode === "destroy" ? "destroy" : "suspend");
   return json({ ok: true });

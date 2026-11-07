@@ -1,12 +1,10 @@
-import { authUser, handle, json, randToken, sha256 } from "../_shared/lib.ts";
+import { authOwner, handle, json, randToken, sha256 } from "../_shared/lib.ts";
 import { fs, MAX_LIFETIME_S } from "../_shared/freestyle.ts";
 
 // Start (or resume) the VM for a session. The VM receives ONLY a scoped, short-lived agent token.
 Deno.serve(handle(async (req) => {
-  const { db, user } = await authUser(req);
-  const { session_id } = await req.json();
-  const { data: s } = await db.from("sessions").select("*").eq("id", session_id).eq("user_id", user.id).maybeSingle();
-  if (!s) return json({ error: "session not found" }, 404);
+  const body = await req.json();
+  const { db, session: s } = await authOwner(req, body.session_id);
 
   const f = fs();
   const token = randToken(32);                         // fresh scoped token for this run
@@ -31,7 +29,16 @@ Deno.serve(handle(async (req) => {
     // Start the agent as a background service with ONLY these env vars.
     const env = `BLOCKY_API=${Deno.env.get("SUPABASE_URL")}/functions/v1\nBLOCKY_AGENT_TOKEN=${token}\nBLOCKY_SESSION_ID=${s.id}\n`;
     await vm.fs.writeFile("/etc/blockyai.env", env);
-    await vm.exec("chmod 600 /etc/blockyai.env && sudo systemctl restart blockyai-agent");
+    // Each step is independent (no && chain): the env file is root-owned, so chmod must be sudo, and a failed chmod must never skip the restart.
+    await vm.exec("sudo chown ubuntu:ubuntu /etc/blockyai.env; sudo chmod 600 /etc/blockyai.env");
+    await vm.exec("sudo systemctl daemon-reload; sudo systemctl restart blockyai-agent");
+    // Verify the agent really is up. Never report "running" on faith.
+    let up = false;
+    for (let i = 0; i < 6 && !up; i++) { await new Promise((r) => setTimeout(r, 1000)); const st = await vm.exec("systemctl is-active blockyai-agent"); up = (st.stdout ?? "").trim() === "active"; }
+    if (!up) {
+      const j = await vm.exec("sudo journalctl -u blockyai-agent -n 5 --no-pager 2>&1 | cut -c1-160");
+      throw new Error("agent service failed to start: " + (j.stdout ?? "").replace(/BLOCKY_AGENT_TOKEN=\S+/g, "").slice(0, 200));
+    }
     const id = (vm as any).id ?? s.vm_id;
     await db.from("sessions").update({ vm_id: id, vm_status: "running", vm_started_at: new Date().toISOString(), last_active_at: new Date().toISOString() }).eq("id", s.id);
     return json({ vm_id: id, status: "running" });

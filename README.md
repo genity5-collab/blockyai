@@ -6,7 +6,7 @@ Web app -> Supabase (messages) -> Freestyle VM agent -> edge functions -> Roblox
 ```
 | Folder | What |
 |---|---|
-| `web/` | Static chat UI (Render static site). Only the public anon key. |
+| `web-src/` | React + Vite web app (Render builds it to `dist/`). Only the public anon key. |
 | `plugin/` | Roblox Studio plugin (pairing, allowlisted commands, edit log). |
 | `agent/` | Agent runtime that runs inside the VM (loop, tools, Luau lint). |
 | `supabase/` | Schema migration + 12 edge functions. |

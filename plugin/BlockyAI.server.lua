@@ -168,7 +168,7 @@ local function loop()
 	running = false
 end
 connect.MouseButton1Click:Connect(function()
-	local data, code = post("plugin-pair", { code = box.Text }, false)
+	local data, code = post("plugin-pair", { code = string.upper((string.gsub(box.Text or "", "%s", ""))), place_name = (game.Name ~= "" and game.Name) or "Untitled place" }, false)
 	if data and data.token then token = data.token; plugin:SetSetting("blockyai_token", token); status.Text = "Paired!"; task.spawn(loop) else status.Text = "Pairing failed (" .. tostring(code) .. ")" end
 end)
 if token then task.spawn(loop) end
