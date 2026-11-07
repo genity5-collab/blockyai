@@ -24,6 +24,7 @@ export const toolFamily = (name) => (String(name).startsWith("roblox_") ? "roblo
 // ---- never stop early ----
 export const MAX_GATE_REJECTIONS = 6;
 export const MAX_CONSECUTIVE_FAILURES = 4;
+export const MAX_TRUNCATIONS = 3;        // consecutive cut-off replies that produced nothing runnable
 export const MAX_PARSE_FAILURES = 3;     // consecutive replies whose tool call could not be parsed; they do NOT count toward MAX_CONSECUTIVE_FAILURES
 // These mean nothing more can be done by trying again, so the run ends and the raw error is shown.
 export const HARD_FAILURE = /plugin not responding|plugin did not respond|waiting for user confirmation|LLM error|http 401|invalid or expired token|VM is not running/i;
@@ -123,8 +124,8 @@ export function wrapUntrusted(v) {
   return `<untrusted_game_data>\n${t}\n</untrusted_game_data>`;
 }
 
-export async function handleUserMessage(history, userText, { maxIterations = 12, llm = api.llm, tools = TOOLS, say = api.say, update = api.update, shouldStop = async () => false, log = (r) => api.logToolCall(r), messageId = null } = {}) {
-  const runId = randomUUID(); let seq = 0; let gateRejections = 0, consecutiveFailures = 0, lastFailure = null, parseFailures = 0;
+export async function handleUserMessage(history, userText, { maxIterations = 12, llm = api.llm, tools = TOOLS, say = api.say, update = api.update, shouldStop = async () => false, log = (r) => api.logToolCall(r), logLlm = (r) => api.logLlm(r), messageId = null } = {}) {
+  const runId = randomUUID(); let seq = 0; let gateRejections = 0, consecutiveFailures = 0, lastFailure = null, parseFailures = 0, consecutiveTruncations = 0;
   const msgs = [{ role: "system", content: SYSTEM }, ...history, { role: "user", content: userText }];   // userText already includes any <attachment> context
   const cards = [];
   let liveId = null;
@@ -133,8 +134,20 @@ export async function handleUserMessage(history, userText, { maxIterations = 12,
     const r = await llm(msgs);
     if (r.error) { await say("assistant", `LLM error: ${r.error}`, null, "error"); return; }
     const text = r.content || "";
+    const truncated = r.truncated === true || r.finish_reason === "length";
+    // Audit every model call so truncation, token use and iteration count are visible (never lets logging break a run).
+    try { Promise.resolve(logLlm({ run_id: runId, message_id: messageId, iteration: i, finish_reason: r.finish_reason ?? "unknown", prompt_tokens: r.usage?.prompt_tokens ?? null, completion_tokens: r.usage?.completion_tokens ?? null, chars: text.length })).catch(() => {}); } catch {}
     const parsed = parseReply(text);
+    // A reply cut off by the length limit: only calls that were COMPLETELY received may run. A call with an unclosed body or tag is dropped.
+    // The cut can fall anywhere in the final call, even if it still parses (a shortened string or number is still valid JSON), so a call that touches the end of the text is never trusted.
+    // A call is only known to be complete if something follows it. A call that ends exactly where the text ends may have been cut inside it.
+    if (truncated) parsed.calls = parsed.calls.filter((c) => !c.unclosed && !c.endsAtTextEnd);
     const calls = parsed.calls;
+    if (truncated) {
+      msgs.push({ role: "assistant", content: text });
+      msgs.push({ role: "user", content: `Your last reply was CUT OFF by the output length limit (finish_reason=length), so the end of it was lost${calls.length ? `; only the ${calls.length} complete tool call(s) before the cut were run` : " and nothing was run"}. Do not repeat the same long output. Split the work: smaller build_model specs (one section per call), or smaller scripts in separate modules, and use the raw-body form (<source>...</source>, <spec>...</spec>).` });
+      if (!calls.length) { consecutiveTruncations++; if (consecutiveTruncations >= MAX_TRUNCATIONS) { await say("assistant", "INCOMPLETE. My output was cut off by the length limit " + consecutiveTruncations + " times in a row, so I stopped. Ask me for a smaller piece at a time.", cards.length ? cards : null, "incomplete"); return; } continue; }
+    } else consecutiveTruncations = 0;
     const thought = stripTool(text);
     // A reply that TRIED to call a tool but could not be parsed is never a final answer. Tell the model exactly what is wrong and let it resend.
     if (!calls.length && parsed.attempted) {
@@ -198,7 +211,7 @@ export async function handleUserMessage(history, userText, { maxIterations = 12,
       // Recoverable: the raw error goes back to the model so it can fix the cause. The card still shows it in red.
       results.push("The call above FAILED with the raw error shown. Fix the cause and retry; do not claim success.");
     } else { consecutiveFailures = 0; lastFailure = null; }
-    msgs.push({ role: "assistant", content: text });
+    if (!truncated) msgs.push({ role: "assistant", content: text });
     msgs.push({ role: "user", content: results.join("\n\n") });
   }
   await say("assistant", `I stopped after ${maxIterations} steps (your max-iteration limit). Tell me to continue and I'll pick up from here.`, cards, "idle");

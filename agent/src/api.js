@@ -27,5 +27,6 @@ export const api = {
   plan: (action, body = {}) => call("agent-plan", { method: "POST", body: JSON.stringify({ action, ...body }) }),
   template: (action, body = {}) => call("agent-template", { method: "POST", body: JSON.stringify({ action, ...body }) }),
   logToolCall: (row) => call("agent-toolcall", { method: "POST", body: JSON.stringify(row) }),
-  llm: (messages, model = "qwen-coder") => call("llm-proxy", { method: "POST", body: JSON.stringify({ model, messages, max_tokens: 3500 }) }),
+  llm: (messages, model = ENV.BLOCKY_MODEL || "qwen-coder", max_tokens = Number(ENV.BLOCKY_MAX_TOKENS) || 3500) => call("llm-proxy", { method: "POST", body: JSON.stringify({ model, messages, max_tokens }) }),
+  logLlm: (row) => call("agent-llmcall", { method: "POST", body: JSON.stringify(row) }),
 };

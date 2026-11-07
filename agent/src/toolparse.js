@@ -109,7 +109,7 @@ export function parseReply(text) {
     } else r = parseJsonAt(s, f.index + f[0].length);
     if (r.call) {
       if (calls.length >= MAX_CALLS_PER_REPLY) { cappedAt = calls.length; break; }
-      calls.push(r.call);
+      calls.push({ ...r.call, endsAtTextEnd: /^\s*$/.test(s.slice(r.end)) });
     } else errors.push({ message: r.error });
     i = Math.max(r.end, i + 1);
   }
