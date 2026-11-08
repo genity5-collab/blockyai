@@ -1,5 +1,8 @@
 import { makeRunWatcher } from "./context.js";
-import { fileMemory, WORK } from "./tools-vm.js";
+// tools.js MUST load before tools-vm.js: the two import each other, and tools-vm.js loaded first leaves tools.js reading VM_EXTRA_TOOLS before it exists.
+// WORK is defined in tools.js (tools-vm.js only imports it). test/phase7-entry.test.js starts this file for real, so a bad import here cannot reach a snapshot.
+import { WORK } from "./tools.js";
+import { fileMemory } from "./tools-vm.js";
 import { findInterrupted, resumeNote, resumeAllowed } from "./resume.js";
 import { api } from "./api.js";
 import { clampIterations, handleUserMessage, attachmentContext } from "./loop.js";
