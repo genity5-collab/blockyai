@@ -38,7 +38,7 @@ export default function Landing() {
 
       <div className="connect glass hud">
         {!sid || !pairing ? (
-          <JoinPanel acct={acct} busy={busy} onDiscord={signIn} onAnonymous={createSession} />
+          <JoinPanel acct={acct} busy={busy} onDiscord={signIn} onStart={createSession} />
         ) : burst || paired ? (
           <div className="connected"><div className="burst"><Check size={44} strokeWidth={3} /></div>
             <div className="label" style={{ color: "var(--green)" }}>Connected</div>

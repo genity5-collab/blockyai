@@ -9,13 +9,11 @@ import Capability from "./components/Capability.jsx";
 import { store } from "./lib/util.js";
 import SignInGate from "./components/SignInGate.jsx";
 import { useAccount } from "./lib/useAccount.js"; import { AccountProvider } from "./lib/accountContext.jsx";
-import { shouldShowGate, SKIP_KEY } from "./lib/login.js";
+import { shouldShowGate } from "./lib/login.js";
 
 export default function App() {
   const { sid, data, sessions, toast } = useApp();
   const account = useAccount(toast);
-  const [skipped, setSkipped] = useState(() => localStorage.getItem(SKIP_KEY) === "1");
-  const skip = () => { localStorage.setItem(SKIP_KEY, "1"); setSkipped(true); };
   const [reduce] = useState(() => store.get("reduce", false));
   useEffect(() => { document.documentElement.classList.toggle("reduce", !!store.get("reduce", false)); }, []);
   const connected = !!data?.session?.plugin_connected_at;
@@ -23,12 +21,12 @@ export default function App() {
   useEffect(() => { const h = () => setHash(location.hash); addEventListener("hashchange", h); return () => removeEventListener("hashchange", h); }, []);
   const diag = hash.startsWith("#/diagnostics");
   const cap = hash.startsWith("#/capability");
-  const gate = shouldShowGate({ acct: account.acct, skipped, hasSession: (sessions ?? []).length > 0 || !!sid, sessionsLoaded: sessions !== null, paired: connected, hash, loginResult: account.loginResult });
+  const gate = shouldShowGate({ acct: account.acct, hash, loginResult: account.loginResult });
   return (
     <AccountProvider value={account}>
       <div className={"app" + (reduce ? " reduce" : "")}>
         <World />
-        {diag ? <Diagnostics /> : cap ? <Capability /> : gate ? <SignInGate busy={account.busy} onDiscord={account.signIn} onSkip={skip} /> : sid && connected ? <Workspace /> : <Landing />}
+        {diag ? <Diagnostics /> : cap ? <Capability /> : gate ? <SignInGate busy={account.busy} onDiscord={account.signIn} /> : sid && connected ? <Workspace /> : <Landing />}
         <Toasts />
       </div>
     </AccountProvider>

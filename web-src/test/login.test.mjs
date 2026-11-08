@@ -24,21 +24,19 @@ t("other avatar urls are dropped", [ "https://evil.com/a.png", "http://cdn.disco
 
 console.log(`login: ${pass} passed, ${fail} failed`); if (fail) process.exit(1);
 
-// ---- the sign-in gate: when does the full-screen "Continue with Discord" screen appear? ----
+// ---- the sign-in gate: FORCED. No Discord account = the sign-in screen, before the plugin steps. ----
 import { shouldShowGate } from "../src/lib/login.js";
 {
   let p = 0, f = 0; const g = (n, c) => { if (c) p++; else { f++; console.log("FAIL:", n); } };
-  const base = { acct: null, skipped: false, hasSession: false, sessionsLoaded: true, paired: false, hash: "", loginResult: null };
-  g("first visit, no account -> gate shows", shouldShowGate(base) === true);
-  g("account still loading -> NO gate (no flash)", shouldShowGate({ ...base, acct: undefined }) === false);
+  const base = { acct: null, hash: "", loginResult: null };
+  g("signed out -> gate shows", shouldShowGate(base) === true);
+  g("account still loading -> NO gate yet (no flash)", shouldShowGate({ ...base, acct: undefined }) === false);
   g("signed in -> no gate", shouldShowGate({ ...base, acct: { name: "N" } }) === false);
-  g("chose 'without an account' before -> no gate", shouldShowGate({ ...base, skipped: true }) === false);
-  g("already paired with Studio (existing user) -> never gated", shouldShowGate({ ...base, paired: true }) === false);
-  g("has a session already -> never gated (returning anonymous user)", shouldShowGate({ ...base, hasSession: true }) === false);
-  g("diagnostics and capability pages are never gated", shouldShowGate({ ...base, hash: "#/diagnostics" }) === false && shouldShowGate({ ...base, hash: "#/capability" }) === false);
-  g("just returned from Discord (?login=...) -> no gate while the result is handled", shouldShowGate({ ...base, loginResult: "ok" }) === false && shouldShowGate({ ...base, loginResult: "failed" }) === false);
-  g("sessions still loading -> NO gate (a returning user must not see a flash of the sign-in screen)", shouldShowGate({ ...base, sessionsLoaded: false }) === false);
-  g("account lookup failed (null) still shows the gate rather than trapping the user", shouldShowGate(base) === true);
-  g("junk input never throws and never gates", [undefined, null, 5, "x", {}, []].every((x) => { try { return shouldShowGate(x) === false; } catch { return false; } }));
+  g("an existing session, paired Studio or saved session id do NOT bypass it any more", shouldShowGate({ ...base, hasSession: true, paired: true, skipped: true, sessionsLoaded: true }) === true);
+  g("diagnostics and capability pages are never gated (they are tools, not the product)", shouldShowGate({ ...base, hash: "#/diagnostics" }) === false && shouldShowGate({ ...base, hash: "#/capability" }) === false);
+  g("returned from Discord with ok and the account is loaded -> signed in, no gate", shouldShowGate({ ...base, loginResult: "ok", acct: { name: "N" } }) === false);
+  g("returned with ?login=ok but the account is not there yet -> still waits (no flash of the gate)", shouldShowGate({ ...base, loginResult: "ok", acct: undefined }) === false);
+  g("returned with cancelled/failed/expired -> the gate shows again so they can retry", ["cancelled", "expired", "failed"].every((r) => shouldShowGate({ ...base, loginResult: r }) === true));
+  g("junk input never throws and never gates", [undefined, null, 5, "x", [], {}].every((x) => { try { return shouldShowGate(x) === false; } catch { return false; } }));
   console.log(`gate: ${p} passed, ${f} failed`); if (f) process.exit(1);
 }

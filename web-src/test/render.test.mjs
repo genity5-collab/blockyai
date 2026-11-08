@@ -66,6 +66,8 @@ if (typeof O === "function") {
   o = h(V, { acct: undefined, busy: false }); t("loading: a quiet placeholder, no sign-in button", o.includes("aria-busy") && !o.includes("Sign in"), o);
   o = h(V, { acct: { name: "Nelly", avatar_url: "https://cdn.discordapp.com/avatars/123/abc.png?size=64" }, busy: false });
   t("signed in: shows the name, the avatar and a sign-out button", o.includes("Nelly") && o.includes("cdn.discordapp.com/avatars/123/abc.png") && o.includes("Sign out"), o);
+  o = h(V, { acct: { name: "Nelly", avatar_url: null }, busy: false });
+  t("signed in: the name is NEVER hidden on small screens (it is not inside hide-sm)", !/hide-sm[^>]*>[^<]*Nelly/.test(o) && o.includes("Nelly"), o);
   o = h(V, { acct: { name: "Nelly Smith", avatar_url: null }, busy: false }); t("signed in without an avatar: shows initials", o.includes(">NS<") && !o.includes("<img"), o);
   o = h(V, { acct: { name: "x", avatar_url: "https://evil.com/a.png" }, busy: false }); t("a non-Discord avatar url is never rendered", !o.includes("evil.com") && !o.includes("<img"), o);
   o = h(V, { acct: { name: "<img src=x onerror=alert(1)><script>alert(2)</script>", avatar_url: null }, busy: false }); t("a hostile display name is escaped", !o.includes("<script>") && !o.includes("<img src=x"), o);
@@ -73,20 +75,20 @@ if (typeof O === "function") {
 }
 
 
-// Join panel (landing): Discord is the main way in, anonymous stays available
+// Join panel: sign-in is FORCED, so signed out shows only the Discord button (no skip)
 {
   const J = JP.default; const noop = () => {};
-  let o = h(J, { acct: null, busy: false, onDiscord: noop, onAnonymous: noop });
-  t("join (signed out): Discord is the primary button", o.includes("Continue with Discord") && o.indexOf("Continue with Discord") < o.indexOf("without an account"), o);
-  t("join (signed out): anonymous is still offered, as a quieter text button", /<button[^>]*class="[^"]*linkbtn[^"]*"[^>]*>[^<]*without an account/.test(o), o);
-  t("join (signed out): says what signing in gives you", /across devices|keep your sessions/i.test(o), o);
-  t("join: no longer claims 'No account needed' as the only story", !/No account needed\./.test(o), o);
-  o = h(J, { acct: null, busy: true, onDiscord: noop, onAnonymous: noop }); t("join (busy): Discord button disabled with a clear label", o.includes("disabled") && o.includes("Opening Discord"), o);
-  o = h(J, { acct: undefined, busy: false, onDiscord: noop, onAnonymous: noop }); t("join (loading account): no flash of the wrong state", !o.includes("Continue with Discord") && o.includes("aria-busy"), o);
-  o = h(J, { acct: { name: "Nelly" }, busy: false, onDiscord: noop, onAnonymous: noop });
-  t("join (signed in): welcomes by name and offers Start new session as the main action", o.includes("Welcome back, Nelly") && o.includes("Start new session") && !o.includes("Continue with Discord"), o);
-  o = h(J, { acct: { name: "<img src=x onerror=alert(1)>" }, busy: false, onDiscord: noop, onAnonymous: noop }); t("join: a hostile display name is escaped", !o.includes("<img src=x"), o);
-  o = h(J, { acct: { name: "" }, busy: false, onDiscord: noop, onAnonymous: noop }); t("join: an empty name still welcomes gracefully", o.includes("Welcome back") && !o.includes("undefined"), o);
+  let o = h(J, { acct: null, busy: false, onDiscord: noop, onStart: noop });
+  t("join (signed out): Continue with Discord is the way in", o.includes("Continue with Discord"), o);
+  t("join (signed out): there is NO skip / anonymous option", !/without an account|linkbtn|Start new session/i.test(o), o);
+  t("join (signed out): says what signing in gives you", /across devices/i.test(o) && /never your email/i.test(o), o);
+  t("join (signed out): the old 'No account needed' claim is gone", !/No account needed/i.test(o), o);
+  o = h(J, { acct: null, busy: true, onDiscord: noop, onStart: noop }); t("join (busy): Discord button disabled with a clear label", o.includes("disabled") && o.includes("Opening Discord"), o);
+  o = h(J, { acct: undefined, busy: false, onDiscord: noop, onStart: noop }); t("join (loading account): no flash of the wrong state", !o.includes("Continue with Discord") && o.includes("aria-busy"), o);
+  o = h(J, { acct: { name: "Nelly" }, busy: false, onDiscord: noop, onStart: noop });
+  t("join (signed in): welcomes by name and offers Start new session", o.includes("Welcome back, Nelly") && o.includes("Start new session") && !o.includes("Continue with Discord"), o);
+  o = h(J, { acct: { name: "<img src=x onerror=alert(1)>" }, busy: false, onDiscord: noop, onStart: noop }); t("join: a hostile display name is escaped", !o.includes("<img src=x"), o);
+  o = h(J, { acct: { name: "" }, busy: false, onDiscord: noop, onStart: noop }); t("join: an empty name still welcomes gracefully", o.includes("Welcome back") && !o.includes("undefined"), o);
 }
 
 // ShotStrip

@@ -3,7 +3,7 @@ import Logo from "./Logo.jsx"; import JoinPanel from "./JoinPanel.jsx";
 
 // Full-screen sign-in shown automatically to a brand-new visitor, before the plugin pairing screen (like a social app's login page).
 // Pure view: App decides WHEN to show it (shouldShowGate); this only draws it.
-export default function SignInGate({ busy, onDiscord, onSkip }) {
+export default function SignInGate({ busy, onDiscord }) {
   return (
     <div className="landing" role="dialog" aria-modal="true" aria-label="Sign in to BlockyAI" style={{ justifyContent: "center" }}>
       <div className="hero">
@@ -12,7 +12,7 @@ export default function SignInGate({ busy, onDiscord, onSkip }) {
         <p className="tag">Build Roblox games by talking to them.</p>
       </div>
       <div className="connect glass hud" style={{ maxWidth: 440, width: "100%" }}>
-        <JoinPanel acct={null} busy={busy} onDiscord={onDiscord} onAnonymous={onSkip} />
+        <JoinPanel acct={null} busy={busy} onDiscord={onDiscord} />
       </div>
     </div>
   );

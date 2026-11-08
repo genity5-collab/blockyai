@@ -17,7 +17,7 @@ export function AccountView({ acct, busy, onSignIn, onSignOut }) {
   return (
     <span className="chip" title={`Signed in with Discord as ${acct.name}`} style={{ gap: 8 }}>
       {av ? <img src={av} alt="" width={20} height={20} style={{ borderRadius: "50%" }} /> : <b aria-hidden="true" style={{ display: "inline-grid", placeItems: "center", width: 20, height: 20, borderRadius: "50%", background: "var(--s2)", fontSize: 10 }}>{initials(acct.name)}</b>}
-      <span className="hide-sm" style={{ maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{acct.name}</span>
+      <span className="acct-name" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{acct.name}</span>
       <button className="iconbtn" style={{ width: 24, height: 24 }} onClick={onSignOut} disabled={busy} title="Sign out on this browser" aria-label="Sign out"><LogOut size={13} /></button>
     </span>
   );

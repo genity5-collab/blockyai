@@ -36,17 +36,14 @@ export const initials = (name) => {
 // An avatar is only ever shown if it comes from Discord's own CDN over https.
 export const safeAvatar = (u) => (typeof u === "string" && /^https:\/\/cdn\.discordapp\.com\/avatars\/\d+\/[A-Za-z0-9_]+\.png(\?size=\d+)?$/.test(u) ? u : null);
 
-// Should the full-screen "Continue with Discord" gate show instead of the landing page?
-// Yes only for a brand-new visitor: no account, hasn't chosen to skip, no existing session, not paired, and not on a tool page.
-// It must never lock an existing user out, so every doubt answers "no gate".
+// Should the full-screen "Continue with Discord" gate show instead of the app?
+// FORCED sign-in: whoever has no Discord account sees it, before the plugin steps, whatever sessions they already have
+// (their anonymous sessions attach to the account when they sign in). Tool pages (#/diagnostics, #/capability) are exempt.
 //   acct: undefined = still loading (no gate yet, to avoid a flash), null = signed out, object = signed in
 export function shouldShowGate(s) {
   if (!s || typeof s !== "object") return false;
   if (s.acct === undefined || s.acct) return false;
-  if (s.skipped || s.hasSession || s.paired) return false;
-  if (!s.sessionsLoaded) return false;                       // the session list is still loading: a returning user must not see a flash of the gate
   if (typeof s.hash === "string" && (s.hash.startsWith("#/diagnostics") || s.hash.startsWith("#/capability"))) return false;
-  if (s.loginResult) return false;
   return s.acct === null;
 }
 
