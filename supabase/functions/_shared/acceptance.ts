@@ -22,7 +22,8 @@ function common(calls: Call[], plan: Plan, minInstances: number): Rule[] {
     rule("looked", "The result was looked at (screenshot_multi or a scene report)", okCalls(calls, "screenshot_multi").length + okCalls(calls, "roblox_screenshot").length > 0, `${okCalls(calls, "screenshot_multi").length} screenshot_multi, ${okCalls(calls, "roblox_screenshot").length} scene report(s)`),
   ];
 }
-const linted = (calls: Call[]) => okCalls(calls, "vm_lint_luau").length;
+// A lint counts only when the tool reported passed:true. vm_lint_luau returns ok:true even for a FAILED lint, so ok alone proves nothing.
+const linted = (calls: Call[]) => okCalls(calls, "vm_lint_luau").filter((c) => c.result_summary?.passed === true).length;
 const pushed = (calls: Call[]) => okCalls(calls, "roblox_write_script").length;
 const playtested = (calls: Call[]) => okCalls(calls, "roblox_playtest_start").length > 0;
 const usedHeightmapOrFill = (calls: Call[]) => okCalls(calls, "terrain_heightmap").length + okCalls(calls, "terrain_fill").length;

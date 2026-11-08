@@ -25,13 +25,13 @@ test("yacht: instances add up across sections and failed calls are ignored", () 
   assert.equal(v.pass, true); assert.match(v.rules.find((r) => r.id === "built").evidence, /50 instances across 2/);
 });
 test("obby: needs scripts, lint, a playtest and its logs", () => {
-  const base = [C("build_model", true, { instances: 80, error_count: 0 }), C("screenshot_multi"), C("vm_lint_luau"), C("roblox_write_script"), C("roblox_write_script"), C("roblox_playtest_start"), C("roblox_get_playtest_logs")];
+  const base = [C("build_model", true, { instances: 80, error_count: 0 }), C("screenshot_multi"), C("vm_lint_luau", true, { passed: true }), C("roblox_write_script"), C("roblox_write_script"), C("roblox_playtest_start"), C("roblox_get_playtest_logs")];
   assert.equal(mod.evaluate("obby", base, plan(8)).pass, true);
   for (const drop of ["vm_lint_luau", "roblox_playtest_start", "roblox_get_playtest_logs"]) assert.equal(mod.evaluate("obby", base.filter((c) => c.name !== drop), plan(8)).pass, false, "missing " + drop);
   assert.equal(mod.evaluate("obby", base.filter((c, i) => c.name !== "roblox_write_script" || i === 3), plan(8)).pass, false, "only one script");
 });
 test("shop: needs ui_build, a pushed + linted server script, and a playtest with logs", () => {
-  const base = [C("ui_build"), C("vm_lint_luau"), C("roblox_write_script"), C("roblox_playtest_start"), C("roblox_get_playtest_logs")];
+  const base = [C("ui_build"), C("vm_lint_luau", true, { passed: true }), C("roblox_write_script"), C("roblox_playtest_start"), C("roblox_get_playtest_logs")];
   assert.equal(mod.evaluate("shop", base, plan(5)).pass, true);
   for (const drop of ["ui_build", "vm_lint_luau", "roblox_write_script", "roblox_playtest_start"]) assert.equal(mod.evaluate("shop", base.filter((c) => c.name !== drop), plan(5)).pass, false, "missing " + drop);
 });
@@ -47,13 +47,22 @@ test("every failing rule names its evidence (so the page can show WHY)", () => {
   const failed = v.rules.filter((r) => !r.pass); assert.ok(failed.length >= 4); for (const r of failed) assert.ok(r.evidence.length > 0, r.id);
 });
 test("the house test cannot pass on a lint alone", () => {
-  const v = mod.evaluate("house", [C("build_model", true, { instances: 35, error_count: 0 }, ""), C("screenshot_multi"), C("vm_lint_luau")], plan(5));
+  const v = mod.evaluate("house", [C("build_model", true, { instances: 35, error_count: 0 }, ""), C("screenshot_multi"), C("vm_lint_luau", true, { passed: true })], plan(5));
   assert.equal(v.rules.find((r) => r.id === "script").pass, false, "no script was written or pushed"); assert.equal(v.pass, false);
 });
 
 test("house: a keyword in build_model args can no longer stand in for a pushed script", () => {
-  const v = mod.evaluate("house", [C("build_model", true, { instances: 35, error_count: 0 }, '{"spec":"{...} Script DoorScript"}'), C("screenshot_multi"), C("vm_lint_luau")], plan(5));
+  const v = mod.evaluate("house", [C("build_model", true, { instances: 35, error_count: 0 }, '{"spec":"{...} Script DoorScript"}'), C("screenshot_multi"), C("vm_lint_luau", true, { passed: true })], plan(5));
   assert.equal(v.rules.find((r) => r.id === "script").pass, false); assert.equal(v.pass, false);
-  const ok = mod.evaluate("house", [C("build_model", true, { instances: 35, error_count: 0 }), C("screenshot_multi"), C("vm_lint_luau"), C("roblox_write_script")], plan(5));
+  const ok = mod.evaluate("house", [C("build_model", true, { instances: 35, error_count: 0 }), C("screenshot_multi"), C("vm_lint_luau", true, { passed: true }), C("roblox_write_script")], plan(5));
   assert.equal(ok.pass, true);
+});
+
+test("a FAILED lint (ok:true, passed:false) or a lint with no passed flag never satisfies the lint rule", () => {
+  const mk = (lint) => [C("build_model", true, { instances: 35, error_count: 0 }), C("screenshot_multi"), lint, C("roblox_write_script")];
+  const rule = (calls) => mod.evaluate("house", calls, plan(5)).rules.find((r) => r.id === "lint");
+  assert.equal(rule(mk(C("vm_lint_luau", true, { passed: true }))).pass, true);
+  assert.equal(rule(mk(C("vm_lint_luau", true, { passed: false }))).pass, false, "failed lint must not count");
+  assert.equal(rule(mk(C("vm_lint_luau", true, null))).pass, false, "no passed flag is not proof");
+  assert.equal(rule(mk(C("vm_lint_luau", false, { passed: true }))).pass, false, "a failed tool call does not count");
 });
