@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import LockedShot from "./LockedShot.jsx";
-import { History, Terminal, Image as Img, Undo2, Pause, Play, Download, Search, ChevronRight, Trash2, ArrowDownToLine, Sparkles, Columns2, Package } from "lucide-react";
+import ScreenPanel from "./ScreenPanel.jsx";
+import { History, Terminal, Image as Img, Undo2, Pause, Play, Download, Search, ChevronRight, Trash2, ArrowDownToLine, Sparkles, Columns2, Package, Monitor } from "lucide-react";
 import Icon from "./Icon.jsx"; import { useApp } from "../lib/store.jsx"; import { web } from "../lib/api.js"; import { clock, cx } from "../lib/util.js"; import ScriptViewer from "./ScriptViewer.jsx"; import { Templates } from "./Build.jsx";
 
 const SRC = { ai: ["violet", "AI"], user: ["green", "USER"], bulk: ["amber", "BULK"] };
@@ -60,6 +61,6 @@ function Shots() {
 export default function RightPanel({ forceTab }) {
   const { data } = useApp(); const [t, setT] = useState("log"); const tab = forceTab || t; const errs = (data?.playtest_logs ?? []).filter((l) => l.level === "error").length;
   return (<div className="rp"><div className="tabs" role="tablist">
-    {[["log", History, "Edit log"], ["console", Terminal, "Console"], ["shots", Img, "Shots"], ["tpl", Package, "Templates"]].map(([k, I, n]) => <button key={k} role="tab" aria-selected={tab === k} className={cx("tab", tab === k && "on")} onClick={() => setT(k)}><I size={15} />{n}{k === "console" && errs > 0 && <span className="badge">{errs}</span>}</button>)}</div>
-    {tab === "log" && <EditLog />}{tab === "console" && <Console />}{tab === "shots" && <Shots />}{tab === "tpl" && <Templates />}</div>);
+    {[["log", History, "Edit log"], ["console", Terminal, "Console"], ["screen", Monitor, "Screen"], ["shots", Img, "Shots"], ["tpl", Package, "Templates"]].map(([k, I, n]) => <button key={k} role="tab" aria-selected={tab === k} className={cx("tab", tab === k && "on")} onClick={() => setT(k)}><I size={15} />{n}{k === "console" && errs > 0 && <span className="badge">{errs}</span>}</button>)}</div>
+    {tab === "log" && <EditLog />}{tab === "console" && <Console />}{tab === "screen" && <ScreenPanel />}{tab === "shots" && <Shots />}{tab === "tpl" && <Templates />}</div>);
 }

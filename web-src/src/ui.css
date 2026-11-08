@@ -235,3 +235,26 @@
 .mlink-go{flex:0 0 auto;color:var(--mut)}
 .spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.spin{animation:none}}
+
+/* ---- the AI's screen (ScreenPanel) ---- */
+.screenpane{display:flex;flex-direction:column;gap:8px;padding:10px;min-height:0}
+.screen-frame{position:relative;width:100%;aspect-ratio:16/10;border-radius:10px;border:2px solid var(--line);background:#000;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.screen-frame.live{border-color:var(--line2)}
+.screen-frame img{display:block;width:100%;height:100%;object-fit:contain;user-select:none;-webkit-user-drag:none;pointer-events:none}
+.screen-frame.dark{background:var(--bg)}
+.screen-msg{display:flex;flex-direction:column;align-items:center;gap:8px;padding:18px;text-align:center;max-width:320px}
+.screen-msg h4{margin:0;font-family:var(--f-hud);font-size:18px;letter-spacing:.3px}
+.screen-msg p{margin:0;color:var(--mut);font-size:13px;line-height:1.45}
+.screen-msg.fixing{background:repeating-linear-gradient(135deg,transparent 0 14px,rgba(255,184,0,.05) 14px 28px);width:100%;max-width:none;height:100%;justify-content:center}
+.screen-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:22px}
+.screen-act{display:inline-flex;align-items:center;gap:6px;color:var(--tx);font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.screen-meta{flex:none}
+
+/* ---- the VM loading bar ---- */
+.bootbar{display:flex;align-items:center;gap:12px;padding:6px 14px;background:var(--s1);border-bottom:2px solid var(--line)}
+.bootbar .bb-label{font-family:var(--f-hud);font-size:14px;color:var(--tx);white-space:nowrap}
+.bootbar .bb-track{flex:1;height:8px;border-radius:99px;background:var(--s3);overflow:hidden}
+.bootbar .bb-fill{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--blue),var(--green));transition:width .6s ease}
+.bootbar .bb-pct{font-family:var(--f-mono);font-size:12px;color:var(--mut);min-width:38px;text-align:right}
+.bootbar.done .bb-fill{background:var(--green)}
+@media (prefers-reduced-motion:reduce){.bootbar .bb-fill{transition:none}}

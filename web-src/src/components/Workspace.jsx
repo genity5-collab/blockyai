@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { MessageSquare, FolderTree, Save, Camera, Settings, Plus, Search, RotateCcw, Menu, X, ListTree, Terminal, History } from "lucide-react";
 import Logo from "./Logo.jsx"; import { useApp } from "../lib/store.jsx"; import { cx, fmtDur, ago } from "../lib/util.js";
 import Account from "./Account.jsx"; import Chat from "./Chat.jsx"; import RightPanel from "./RightPanel.jsx"; import Explorer from "./Explorer.jsx";
+import BootBar from "./BootBar.jsx";
 import { SnapshotsView, ShotsView } from "./Views.jsx"; import SettingsPanel from "./SettingsPanel.jsx"; import Palette from "./Palette.jsx";
 
 const NAV = [["chat", MessageSquare, "Chat"], ["explorer", FolderTree, "Explorer"], ["snaps", Save, "Snapshots"], ["shots", Camera, "Screenshots"], ["settings", Settings, "Settings"]];
@@ -37,6 +38,7 @@ export default function Workspace() {
         <select className="sel hide-sm" value={sid} onChange={(e) => select(e.target.value)} aria-label="Switch session">{(sessions ?? []).filter((x) => x.plugin_connected_at).map((x) => <option key={x.id} value={x.id}>{x.title}</option>)}</select>
         <button className="iconbtn" onClick={() => { createSession(); }} title="New session" aria-label="New session"><Plus size={18} /></button>
       </header>
+      <BootBar session={s} busy={vmBusy} />
 
       <div className="cols" style={{ "--rw": rw + "px" }}>
         <nav className="rail glass" aria-label="Sections">
