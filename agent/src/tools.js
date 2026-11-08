@@ -1,8 +1,8 @@
 import { api } from "./api.js";
-import { writeFile, mkdir, readFile } from "node:fs/promises";
+import { writeFile, mkdir, readFile, realpath } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { dirname, join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { createHash } from "node:crypto";
 import { ScriptGuard, windowText, sha as contentSha } from "./scriptguard.js";
 import { currentTurn } from "./lifecycle.js";
@@ -133,6 +133,20 @@ export function vmPath(p) {
   if (!(norm === SANDBOX || norm.startsWith(SANDBOX + "/") || norm.startsWith("/tmp/"))) throw new Error(`path must be inside ${SANDBOX} or /tmp (got ${norm})`);
   return norm;
 }
+// vmPath only checks the TEXT of a path. A symlink inside the project or /tmp (made with vm_exec ln -s) can still point at /etc/blockyai.env.
+// vmRealPath follows symlinks on the nearest existing part of the path and re-checks where it REALLY ends up. Used by every file read and write.
+const insideReal = (r, root) => r === root || r.startsWith(root + sep);
+export async function vmRealPath(p) {
+  const norm = vmPath(p);
+  let cur = norm; const rest = [];
+  for (;;) {                                           // nearest ancestor that exists (a file about to be created does not exist yet)
+    try { cur = await realpath(cur); break; } catch (e) { if (e.code !== "ENOENT" && e.code !== "ENOTDIR") throw e; const up = dirname(cur); if (up === cur) break; rest.unshift(cur.slice(up.length + 1)); cur = up; }
+  }
+  const real = rest.length ? join(cur, ...rest) : cur;
+  const roots = [await realpath(SANDBOX).catch(() => SANDBOX), await realpath("/tmp").catch(() => "/tmp")];
+  if (!roots.some((r) => insideReal(real, r))) throw new Error(`path resolves outside ${SANDBOX} and /tmp (symlink?): ${norm}`);
+  return norm;
+}
 // Commands run as the agent user with a clean environment: the agent token and API addresses are NOT passed down.
 export async function vmExec(command, timeoutSec = 60) {
   const cmd = String(command ?? ""); if (!cmd.trim()) return { ok: false, error: "command is empty" };
@@ -150,14 +164,14 @@ export async function vmExec(command, timeoutSec = 60) {
   }
 }
 export async function vmRead(path, opts = {}) {
-  const p = vmPath(path); const text = await readFile(p, "utf8");
+  const p = await vmRealPath(path); const text = await readFile(p, "utf8");
   // raw: internal callers that PUSH the text somewhere (lint -> Studio) must get every character, unredacted and unclipped.
   if (opts.raw) return { ok: true, result: { path: p, bytes: Buffer.byteLength(text), content: text, truncated: false } };
   const w = windowText(redact(text), { offset: opts.offset, limit: opts.limit ?? VM_READ_DEFAULT });
   return { ok: true, result: { path: p, bytes: Buffer.byteLength(text), total_chars: w.total, offset: w.offset, content: w.text, truncated: w.truncated, next_offset: w.next_offset, marker: w.marker || undefined } };
 }
 export async function vmWrite(path, content) {
-  const p = vmPath(path); const text = String(content ?? "");
+  const p = await vmRealPath(path); const text = String(content ?? "");
   if (text.length > 200000) return { ok: false, error: "file is over 200 KB" };
   await mkdir(dirname(p), { recursive: true }); await writeFile(p, text);
   const back = await readFile(p, "utf8");            // read it back so "written" is verified, not assumed
