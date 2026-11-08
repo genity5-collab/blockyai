@@ -9,7 +9,7 @@ export default function Account() {
   const { acct, busy, signIn, signOut } = useAccountCtx();
   const { status, claiming, claim } = useTokensCtx(); const [open, setOpen] = useState(false);
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+    <span className="acct-wrap" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
       {acct && <TokenChip status={status} onOpen={() => setOpen(true)} />}
       <AccountView acct={acct} busy={busy} onSignIn={signIn} onSignOut={signOut} />
       {open && <RewardsPanel status={status} claiming={claiming} onClaim={claim} onClose={() => setOpen(false)} />}

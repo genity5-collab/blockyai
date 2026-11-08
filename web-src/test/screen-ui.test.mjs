@@ -62,4 +62,13 @@ t("no bar when there is no session yet", r(React.createElement(BootBar, { sessio
 globalThis.__APP__ = { sid: "s1", data: { session: { agent_state: "idle" } } };
 const SP = (await vite.ssrLoadModule("/src/components/ScreenPanel.jsx")).default; o = r(React.createElement(SP));
 t("the panel renders the waiting message first (no picture, no flash of an old frame)", o.includes("The AI&#x27;s screen") && !/<img/.test(o));
+// ---- the phone header ----
+const css = (await import("node:fs")).readFileSync(new URL("../src/ui.css", import.meta.url), "utf8");
+t("phone header css: the topbar can never be wider than the screen", /\.topbar\{min-width:0;max-width:100%\}/.test(css));
+const phone = css.slice(css.lastIndexOf("/* ---- phone header"));
+t("phone header css: on small screens the long account name, the place chip and the Restart VM words are hidden", /max-width:820px/.test(phone) && /\.topbar \.acct-name\{display:none\}/.test(phone) && /\.topbar \.place\{display:none\}/.test(phone) && /\.rv-t\{display:none\}/.test(phone) && /\.topbar\{overflow-x:hidden\}/.test(phone));
+globalThis.localStorage = { getItem: () => null, setItem() {} };
+const WS = (await vite.ssrLoadModule("/src/components/Workspace.jsx")).default;
+globalThis.__APP__ = { sid: "s1", data: { session: { vm_status: "running" }, commands: [], playtest_logs: [] }, ping: 30, stats: {}, sessions: [], vmBusy: false, ensureVm() {}, createSession() {}, select() {} };
+try { o = r(React.createElement(WS)); t("Restart VM keeps its name for screen readers when the words are hidden", /aria-label="Restart VM"/.test(o) && /class="rv-t">Restart VM</.test(o)); } catch (e) { t("workspace renders for the header check", false, String(e).slice(0, 160)); }
 await vite.close(); console.log(`screen-ui: ${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

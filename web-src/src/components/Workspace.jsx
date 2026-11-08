@@ -34,7 +34,7 @@ export default function Workspace() {
         <div style={{ flex: 1 }} />
         <Account />
         <button className="brick sm ghost hide-sm" onClick={() => setPal(true)}><Search size={14} />Search <kbd>Ctrl K</kbd></button>
-        <button className="brick sm amber" onClick={() => ensureVm(true)} disabled={vmBusy} title="Destroy and restart the agent VM"><RotateCcw size={14} />Restart VM</button>
+        <button className="brick sm amber" onClick={() => ensureVm(true)} disabled={vmBusy} title="Destroy and restart the agent VM" aria-label="Restart VM"><RotateCcw size={14} aria-hidden="true" /><span className="rv-t">Restart VM</span></button>
         <select className="sel hide-sm" value={sid} onChange={(e) => select(e.target.value)} aria-label="Switch session">{(sessions ?? []).filter((x) => x.plugin_connected_at).map((x) => <option key={x.id} value={x.id}>{x.title}</option>)}</select>
         <button className="iconbtn" onClick={() => { createSession(); }} title="New session" aria-label="New session"><Plus size={18} /></button>
       </header>

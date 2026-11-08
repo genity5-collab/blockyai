@@ -258,3 +258,16 @@
 .bootbar .bb-pct{font-family:var(--f-mono);font-size:12px;color:var(--mut);min-width:38px;text-align:right}
 .bootbar.done .bb-fill{background:var(--green)}
 @media (prefers-reduced-motion:reduce){.bootbar .bb-fill{transition:none}}
+
+/* ---- phone header: it must never be wider than the screen (it used to push Restart VM and "new session" off the right edge) ---- */
+.topbar{min-width:0;max-width:100%}
+.topbar>*{flex-shrink:0}
+.topbar>.acct-wrap{flex-shrink:1;min-width:0}
+@media (max-width:820px){
+  .topbar{overflow-x:hidden}
+  .topbar .place{display:none}                                  /* the place name is also shown in the chat; the header keeps what you act on */
+  .topbar .acct-name{display:none}                              /* avatar + tokens + sign out stay; the name is in the tooltip */
+  .topbar .acct-wrap{gap:4px}
+  .topbar .brick.sm.amber{padding-left:10px;padding-right:10px}
+  .topbar .brick.sm.amber .rv-t{display:none}                   /* "Restart VM" becomes just its icon (it keeps its title and label) */
+}
