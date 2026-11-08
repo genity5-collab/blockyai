@@ -1,7 +1,19 @@
 import { Freestyle } from "freestyle";
 import { readFileSync, readdirSync, statSync, existsSync } from "fs";
 import { join, relative } from "path";
-const ROOT = "/app/conversations/6aeefb11bd089151b44c96ea/blockyai/agent";
+// Bake from the checkout this script lives in (never a hard-coded path: an old copy once baked stale agent code).
+import { fileURLToPath } from "url"; import { execSync } from "child_process";
+const REPO = join(fileURLToPath(new URL(".", import.meta.url)), "..");
+const ROOT = REPO + "/agent";
+// Refuse to bake code that is behind GitHub, or that has uncommitted changes in agent/ (the VM must run exactly what is on main).
+try {
+  execSync("git fetch -q origin", { cwd: REPO, stdio: "pipe" });
+  const behind = execSync("git rev-list --count HEAD..origin/main", { cwd: REPO }).toString().trim();
+  const dirty = execSync("git status --porcelain -- agent", { cwd: REPO }).toString().trim();
+  if (behind !== "0") { console.log(`ABORT: this checkout is ${behind} commit(s) behind origin/main. Run git merge --ff-only origin/main first.`); process.exit(1); }
+  if (dirty) { console.log("ABORT: agent/ has uncommitted changes:\n" + dirty); process.exit(1); }
+  console.log("baking agent code at commit", execSync("git rev-parse --short HEAD", { cwd: REPO }).toString().trim());
+} catch (e) { console.log("ABORT: could not verify the checkout against GitHub:", String(e.message).slice(0, 160)); process.exit(1); }
 const f = new Freestyle();
 const { vm } = await f.vms.create({ ttlSeconds: 1800, firewall: { rules: [{ action: "allow", source: {}, destination: { public: true } }] } });
 const sh = async (c) => { const r = await vm.exec(c); return { out: (r.stdout + r.stderr).trim(), code: r.statusCode ?? r.exitCode }; };

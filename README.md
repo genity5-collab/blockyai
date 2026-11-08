@@ -23,7 +23,7 @@ Web app -> Supabase (messages) -> Freestyle VM agent -> edge functions -> Roblox
 
 ## Baking a new VM snapshot
 `node scripts/bake-vm.mjs` (needs `FREESTYLE_API_KEY`, run where the `freestyle` npm package is installed). It installs the toolchain, copies the WHOLE `agent/` folder, loads the agent on the VM, runs the agent tests there, lints a shipped template with luau-lsp, and only then calls `vm.snapshot()` (no arguments). If any check fails it deletes the builder VM and aborts. Then: `supabase secrets set BLOCKYAI_SNAPSHOT_ID=<printed id>`.
-Current snapshot (Nov 7 2026): `sh-5779acb871204428ab19bf61361aaa6e` (Phase 1 agent: 53 tools, Node 26, luau-analyze/luau-lsp/stylua/selene).
+Current snapshot (Nov 8 2026): `sh-4b90f9c639244296aae1a0f4074008a6` (agent commit d4333be: 56 tools incl. vm_run_luau, vm_web_fetch, vm_web_search; Node 26, luau, luau-analyze, luau-lsp, stylua, selene). Rebake with `node scripts/bake-vm.mjs` (it refuses to run if the checkout is behind GitHub or agent/ has local edits). Freestyle keeps at most 5 snapshots: delete an unreferenced old one first.
 
 ## Safety
 Allowlisted command types only; `run_lua` off unless enabled in the plugin; destructive commands auto-snapshot first; per-minute command cap, batch cap, iteration cap, VM lifetime cap. Game content is wrapped as `<untrusted_game_data>` and treated as data only.

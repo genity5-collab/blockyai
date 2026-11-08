@@ -13,18 +13,28 @@ Deno.serve(handle(async (req) => {
 
   try {
     let vm;
-    if (s.vm_id) {                                       // resume a suspended VM
-      vm = f.vms.ref(s.vm_id);
-      await vm.start();   // resumes paused VM with processes intact
-    } else {
+    const createFresh = async () => {
       const snap = Deno.env.get("BLOCKYAI_SNAPSHOT_ID"); // baked image: node + luau-analyze + stylua + selene + /agent
-      ({ vm } = await f.vms.create({
+      const r = await f.vms.create({
         ...(snap ? { snapshotId: snap } : {}),
         ttlSeconds: MAX_LIFETIME_S,
         idleTimeoutSeconds: 600,
         // Outbound HTTPS only to what the agent needs (the Supabase project). Nothing else.
         firewall: { rules: [{ action: "allow", source: {}, destination: { public: true } }] },
-      }));
+      });
+      return r.vm;
+    };
+    if (s.vm_id) {                                       // resume a suspended VM
+      try {
+        vm = f.vms.ref(s.vm_id);
+        await vm.start();   // resumes paused VM with processes intact
+      } catch (_e) {
+        // The old VM expired or was deleted. Do NOT leave the session stuck in "error": start a fresh one from the current snapshot.
+        // (The project files lived on the old VM; the Studio place is the source of truth and the agent re-reads it.)
+        vm = await createFresh();
+      }
+    } else {
+      vm = await createFresh();
     }
     // Start the agent as a background service with ONLY these env vars.
     const env = `BLOCKY_API=${Deno.env.get("SUPABASE_URL")}/functions/v1\nBLOCKY_AGENT_TOKEN=${token}\nBLOCKY_SESSION_ID=${s.id}\n`;
