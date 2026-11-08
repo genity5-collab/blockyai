@@ -113,6 +113,7 @@ import { parseReply, MAX_CALLS_PER_REPLY } from "./toolparse.js";
 import { compactMessages } from "./context.js";
 import { isMutatingTool, currentTurn } from "./lifecycle.js";
 import { FailureTracker, classifyError } from "./failpolicy.js";
+import { RunLedger, factsEmbeds, findFabricated } from "./facts.js";
 export { parseReply, MAX_CALLS_PER_REPLY };
 // Back-compatible wrappers. The real work (raw-body form, JSON form, bare fence, error positions, 6-call cap) is in toolparse.js.
 export const parseTools = (text) => parseReply(text).calls.map(({ name, args }) => ({ name, args }));
@@ -138,13 +139,16 @@ export async function handleUserMessage(history, userText, { maxIterations = 12,
   const msgs = [{ role: "system", content: SYSTEM }, ...history, { role: "user", content: userText }];   // userText already includes any <attachment> context
   const cards = [];
   let liveId = null;
+  const ledger = new RunLedger();                         // what the tools REALLY returned this run: the system builds the final facts table from this, not the model
+  let fabStreak = 0, fabNote = "";
   const tracker = new FailureTracker();                  // decides continue / retry / stop per CALL and per KIND of error (see failpolicy.js)
   let mutated = false;                                   // did ANY tool this turn change the game? decides whether the finish gate applies
   currentTurn.messageId = messageId;
   // Every exit goes through here, so every final message carries an outcome and a plan that did not finish is closed.
   const finish = async (outcome, content, { state = "idle", embeds = null, showCards = true } = {}) => {
     if (outcome !== "complete") { try { await planApi("abandon", {}); } catch {} }
-    await say("assistant", content, showCards && cards.length ? cards : null, state, embeds, outcome);
+    const facts = factsEmbeds(ledger, content, { outcome });
+    await say("assistant", content, showCards && cards.length ? cards : null, state, facts.length || embeds ? [...(embeds || []), ...facts] : null, outcome);
   };
   // A new user turn: a plan left over from an EARLIER message must never gate this one.
   try { await planApi("begin_turn", { message_id: messageId }); } catch {}
@@ -153,7 +157,10 @@ export async function handleUserMessage(history, userText, { maxIterations = 12,
     // Long runs: older tool results are shortened so the conversation stays inside the model's window. `msgs` itself is never changed.
     const r = await llm(compactMessages(msgs, { maxChars: contextChars }).messages);
     if (r.error) { await finish("error", `LLM error: ${r.error}`, { state: "error", showCards: false }); return; }
-    const text = r.content || "";
+    // A model that writes its own "Tool result for ..." is inventing outcomes. Real results only ever come from the system: strip them, count them, tell the model.
+    const fab = findFabricated(r.content || "");
+    if (fab.found) { ledger.noteFabricated(); fabNote = "\n\nSYSTEM NOTE: your last reply contained text that looked like a tool result. Only the system writes tool results; that text was ignored and nothing it described was run. Call the tool for real, and never write results yourself."; }
+    const text = fab.cleaned;
     const truncated = r.truncated === true || r.finish_reason === "length";
     // Audit every model call so truncation, token use and iteration count are visible (never lets logging break a run).
     try { Promise.resolve(logLlm({ run_id: runId, message_id: messageId, iteration: i, finish_reason: r.finish_reason ?? "unknown", prompt_tokens: r.usage?.prompt_tokens ?? null, completion_tokens: r.usage?.completion_tokens ?? null, chars: text.length })).catch(() => {}); } catch {}
@@ -181,6 +188,12 @@ export async function handleUserMessage(history, userText, { maxIterations = 12,
       continue;
     }
     parseFailures = 0;
+    if (fab.found && !calls.length && !thought.trim()) {   // the whole reply was an invented result: not an answer
+      fabStreak++;
+      if (fabStreak >= 3) { await finish("incomplete", "INCOMPLETE. The AI kept writing fake tool results instead of calling tools, so I stopped. Nothing it described was run."); return; }
+      msgs.push({ role: "assistant", content: "(a tool result written by the model was removed)" }); msgs.push({ role: "user", content: fabNote.trim() + " Call the tool you need now." }); fabNote = ""; continue;
+    }
+    fabStreak = 0;
     if (parsed.cappedAt != null) msgs.push({ role: "user", content: `NOTE: you sent more than ${MAX_CALLS_PER_REPLY} tool calls; only the first ${MAX_CALLS_PER_REPLY} were run. Send the rest in your next reply.` });
     if (!calls.length) {
       // FINISH GATE. The server (not the model) decides whether the work is really complete. It is NOT opt-in:
@@ -231,6 +244,7 @@ export async function handleUserMessage(history, userText, { maxIterations = 12,
         if (verdict?.action === "retry") { card.result = `retrying (${attempt}): ${String(out.error).slice(0, 120)}`; if (liveId) await update(liveId, thought || "Working...", cards); continue; }
         break;
       }
+      ledger.add(call.name, call.args, out);
       if (out.ok) tracker.recordSuccess(call);
       card.status = out.ok ? "done" : "failed"; card.result = out.ok ? undefined : out.error;
       if (liveId) await update(liveId, thought || "Working...", cards);
@@ -247,7 +261,7 @@ export async function handleUserMessage(history, userText, { maxIterations = 12,
       results.push(failure.verdict?.note ? `The call above FAILED and was NOT retried automatically: it changes the game, and the first attempt may still be running or may have partly applied. Read the game (roblox_get_tree / roblox_find) to see what exists BEFORE trying again, so you do not build it twice.` : "The call above FAILED with the raw error shown. Change the call to fix the cause (a different path, fixed code, a read first); repeating the exact same call will stop the run. Do not claim success.");
     }
     if (!truncated) msgs.push({ role: "assistant", content: text });
-    msgs.push({ role: "user", content: results.join("\n\n") });
+    msgs.push({ role: "user", content: results.join("\n\n") + fabNote }); fabNote = "";
   }
   await finish("incomplete", `INCOMPLETE. I stopped after ${maxIterations} steps (your max-iteration limit) before finishing. Tell me to continue and I'll pick up from here.`);
 }
