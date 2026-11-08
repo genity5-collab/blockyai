@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import LockedShot from "./LockedShot.jsx";
 import { Save, RotateCcw, Camera, Plus } from "lucide-react";
 import { useApp } from "../lib/store.jsx"; import { web } from "../lib/api.js"; import { ago, clock } from "../lib/util.js";
 
@@ -14,5 +15,5 @@ export function ShotsView() {
   const { data, queue, toast } = useApp(); const shots = data?.screenshots ?? [];
   return (<div className="pane full"><div className="toolbar"><span className="label" style={{ flex: 1 }}>Screenshots</span><button className="brick sm" onClick={async () => { await queue("screenshot"); toast("Requested. Studio plugins usually can't capture images.", "warn"); }}><Camera size={14} />Capture</button></div>
     <div className="list">{shots.length === 0 ? <div className="empty"><Camera size={36} color="var(--blue)" /><h4>No screenshots</h4><p>Roblox plugins can't take screenshots, so verification uses the tree, scripts and Output instead.</p></div>
-      : <div className="masonry">{shots.map((s) => <a key={s.id} className="shot" href={s.url} target="_blank" rel="noreferrer"><img src={s.url} alt={clock(s.created_at)} loading="lazy" /></a>)}</div>}</div></div>);
+      : <div className="masonry">{shots.map((s) => <div key={s.id} className="shot"><LockedShot shot={{ ...s, label: s.label || clock(s.created_at) }} /></div>)}</div>}</div></div>);
 }

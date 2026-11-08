@@ -74,9 +74,12 @@ export function AppProvider({ children }) {
 
   const send = async (text, attachmentIds = []) => {
     if (!sid || agentBusy || (!text.trim() && !attachmentIds.length)) return false;
-    setSending(true); ensureVm();
+    setSending(true);
     const r = await web("send_message", { session_id: sid, content: text, attachment_ids: attachmentIds });
     if (r.error) { setSending(false); toast(r.error, r.busy ? "warn" : "error"); return false; }
+    // Out of tokens: the server stored the message and wrote the "Credits Usage Limit Reached" reply itself. The agent never sees it, so do NOT start a VM for it.
+    if (r.out_of_tokens) { setSending(false); toast(r.limit_message || "Credits Usage Limit Reached. Come Back Tomorrow.", "warn"); return true; }
+    ensureVm();                       // start the VM only for a message the server accepted
     loadSessions(); return true;
   };
   const stop = async () => { const r = await web("stop_agent", { session_id: sid }); setSending(false); if (r.error) toast(r.error, "error"); else toast("Stopped", "info"); };

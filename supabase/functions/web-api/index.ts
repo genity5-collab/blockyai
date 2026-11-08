@@ -1,5 +1,7 @@
 import { authOwner, handle, json, randToken, publicSession, ALLOWED, DESTRUCTIVE } from "../_shared/lib.ts";
 import { fs } from "../_shared/freestyle.ts";
+import { tokenDb, accountForOwner } from "../_shared/tokendb.ts";
+import { gateMessage } from "../_shared/tokenflow.js";
 
 // The ONLY door the browser uses. Authorizes by x-client-key (hash compared to sessions.owner_key_hash).
 // Actions: sessions_list, session_create, session_get, session_update, session_delete, poll, send_message,
@@ -92,7 +94,8 @@ Deno.serve(handle(async (req) => {
         db.from("tool_calls").select("id,name,family,ok,error,duration_ms,args_summary,created_at").eq("session_id", session.id).order("created_at", { ascending: false }).limit(60),
       ]);
       const shotsOut = [];
-      for (const s of shots.data ?? []) { const { data: sig } = await db.storage.from("screenshots").createSignedUrl(s.storage_path, 900); shotsOut.push({ id: s.id, created_at: s.created_at, label: s.label ?? null, command_id: s.command_id, url: sig?.signedUrl }); }
+      // Screenshots are returned LOCKED (no image URL). Showing one costs 2 tokens and goes through the `tokens` function (view_screenshot).
+      for (const s of shots.data ?? []) shotsOut.push({ id: s.id, created_at: s.created_at, label: s.label ?? null, command_id: s.command_id, locked: true });
       const online = !!session.plugin_last_seen_at && Date.now() - new Date(session.plugin_last_seen_at).getTime() < 30_000;
       return json({ session: publicSession(session), plugin_online: online, messages: msgs.data, commands: cmds.data, edit_log: edits.data, playtest_logs: logs.data, screenshots: shotsOut, snapshots: snaps.data, attachments: atts.data, plan: plan.data ?? null, tool_calls: calls.data ?? [], server_time: Date.now() });
     }
@@ -160,7 +163,18 @@ Deno.serve(handle(async (req) => {
       const ids: string[] = Array.isArray(body.attachment_ids) ? body.attachment_ids.map(String).slice(0, 6) : [];
       let okIds: string[] = [];
       if (ids.length) { const { data: own } = await db.from("attachments").select("id").eq("session_id", session.id).in("id", ids); okIds = (own ?? []).map((r: { id: string }) => r.id); }
-      const { data } = await db.from("messages").insert({ session_id: session.id, role: "user", content: text, attachment_ids: okIds }).select().single();
+      // Tokens: the price is decided on the server (2 per message, +3 per 35 words). A message that cannot be paid for is stored as BLOCKED
+      // (the agent never sees it) and the server writes the limit reply itself, so the chat still shows the exchange.
+      const acct = await accountForOwner(db, oh);
+      if (!acct) return json({ error: "sign in with Discord first", signed_out: true }, 401);
+      const msgId = crypto.randomUUID();
+      const gate = await gateMessage({ db: tokenDb(db, acct), now: new Date(), text, messageId: msgId });
+      if (!gate.allowed) {
+        const { data: blockedMsg } = await db.from("messages").insert({ id: msgId, session_id: session.id, role: "user", content: text, attachment_ids: okIds, blocked: true }).select().single();
+        await db.from("messages").insert({ session_id: session.id, role: "assistant", content: gate.limitMessage, outcome: "complete", blocked: true });
+        return json({ ...blockedMsg, blocked: true, out_of_tokens: true, balance: gate.balance, limit_message: gate.limitMessage });
+      }
+      const { data } = await db.from("messages").insert({ id: msgId, session_id: session.id, role: "user", content: text, attachment_ids: okIds, run_started_at: new Date().toISOString() }).select().single();
       await db.from("sessions").update({ last_active_at: new Date().toISOString(), agent_state: "thinking" }).eq("id", session.id);
       if (session.title === "New session") await db.from("sessions").update({ title: text.slice(0, 40) }).eq("id", session.id);
       return json(data);

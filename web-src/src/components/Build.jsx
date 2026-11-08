@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import LockedShot, { useShot, ShotTile } from "./LockedShot.jsx";
 import { CheckCircle2, Circle, Loader2, Camera, Columns2, Gamepad2, MessageSquare, Package, Trash2, Copy, Check, ExternalLink, ShieldCheck, ListChecks } from "lucide-react";
 import { useApp } from "../lib/store.jsx"; import { web } from "../lib/api.js"; import { cx } from "../lib/util.js";
 
@@ -32,21 +33,33 @@ export function FamilyBadge({ family }) {
 
 // ---------- 3D progress strip + before/after slider ----------
 export function ShotStrip() {
-  const { data } = useApp(); const shots = (data?.screenshots ?? []).filter((s) => s.url); const [sel, setSel] = useState(null); const [cmp, setCmp] = useState(false); const [pos, setPos] = useState(50);
+  const { data } = useApp(); const shots = data?.screenshots ?? []; const [sel, setSel] = useState(null); const [cmp, setCmp] = useState(false); const [pos, setPos] = useState(50);
   if (!shots.length) return null;
   const ordered = [...shots].reverse(); const first = ordered[0], last = ordered[ordered.length - 1]; const cur = sel ? shots.find((s) => s.id === sel) : last;
+  // Screenshots are LOCKED until opened: showing one costs 2 tokens (charged by the server). Before/after opens two, so it costs 4.
   return (
     <div className="shotstrip" aria-label="Build progress screenshots">
       <div className="shot-h"><Camera size={15} color="var(--blue)" /><b>3D progress</b><span className="muted small">{shots.length} view{shots.length > 1 ? "s" : ""}</span>
         {ordered.length > 1 && <button className={cx("qchip", cmp && "on")} onClick={() => setCmp(!cmp)}><Columns2 size={14} />Before / after</button>}</div>
       {cmp && ordered.length > 1 ? (
-        <div className="ba" style={{ "--p": pos + "%" }}>
-          <img src={last.url} alt="After" /><div className="ba-top"><img src={first.url} alt="Before" /></div>
-          <span className="ba-l">BEFORE</span><span className="ba-r">AFTER</span><i className="ba-h" />
-          <input type="range" min="0" max="100" value={pos} onChange={(e) => setPos(+e.target.value)} aria-label="Before and after slider" />
-        </div>
-      ) : cur && <img className="shot-big" src={cur.url} alt={cur.label || "Latest view"} />}
-      <div className="thumbs">{ordered.map((s) => <button key={s.id} className={cx("th", cur?.id === s.id && "on")} onClick={() => { setCmp(false); setSel(s.id); }} title={s.label || "view"}><img src={s.url} alt={s.label || "view"} loading="lazy" />{s.label && <small>{s.label}</small>}</button>)}</div>
+        <BeforeAfter before={first} after={last} pos={pos} setPos={setPos} />
+      ) : cur && <LockedShot key={cur.id} shot={{ ...cur, label: cur.label || "Latest view" }} />}
+      <div className="thumbs">{ordered.map((s) => <button key={s.id} className={cx("th", cur?.id === s.id && "on")} onClick={() => { setCmp(false); setSel(s.id); }} title={s.label || "view"} aria-label={"Select view" + (s.label ? ": " + s.label : "")}><Camera size={16} aria-hidden="true" />{s.label ? <small>{s.label}</small> : <small>view</small>}</button>)}</div>
+    </div>);
+}
+// Before/after needs both images, so it reveals both (2 tokens each).
+function BeforeAfter({ before, after, pos, setPos }) {
+  const a = useShot(after.id), b = useShot(before.id);
+  if (!a.url || !b.url) return (
+    <div className="ba-lock">
+      <ShotTile state={a.state === "shown" && !b.url ? b.state : a.state} url={null} label="Before and after" msg={a.msg || b.msg} cost={4}
+        onReveal={async () => { await Promise.all([a.reveal(), b.reveal()]); }} />
+    </div>);
+  return (
+    <div className="ba" style={{ "--p": pos + "%" }}>
+      <img src={a.url} alt="After" /><div className="ba-top"><img src={b.url} alt="Before" /></div>
+      <span className="ba-l">BEFORE</span><span className="ba-r">AFTER</span><i className="ba-h" />
+      <input type="range" min="0" max="100" value={pos} onChange={(e) => setPos(+e.target.value)} aria-label="Before and after slider" />
     </div>);
 }
 

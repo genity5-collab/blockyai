@@ -40,3 +40,24 @@ import { shouldShowGate } from "../src/lib/login.js";
   g("junk input never throws and never gates", [undefined, null, 5, "x", [], {}].every((x) => { try { return shouldShowGate(x) === false; } catch { return false; } }));
   console.log(`gate: ${p} passed, ${f} failed`); if (f) process.exit(1);
 }
+
+// ---- tokens: pure helpers for the UI ----
+import { weekView, tokenTone, claimMessage } from "../src/lib/tokensui.js";
+{
+  let p = 0, f = 0; const g = (n, c) => { if (c) p++; else { f++; console.log("FAIL:", n); } };
+  const week = [["Mon", 20], ["Tue", 15], ["Wed", 20], ["Thu", 10], ["Fri", 30], ["Sat", 15], ["Sun", 15]].map(([name, reward], i) => ({ name, reward, today: i === 6 }));
+  let v = weekView(week, true);
+  g("week: Mon..Sat are in the past (missed or claimed-earlier, can't be claimed), Sun is today", v.slice(0, 6).every((d) => d.state === "past") && v[6].state === "today");
+  g("week: today is claimable when not yet claimed", v[6].claimable === true && v.slice(0, 6).every((d) => d.claimable === false));
+  v = weekView(week, false); g("week: after claiming, today shows as claimed and is not claimable", v[6].state === "claimed" && v[6].claimable === false);
+  const mid = week.map((d, i) => ({ ...d, today: i === 2 })); v = weekView(mid, true);
+  g("week: a mid-week today -> earlier days past, later days upcoming", v[0].state === "past" && v[1].state === "past" && v[2].state === "today" && v[3].state === "upcoming" && v[6].state === "upcoming");
+  g("week: upcoming days are never claimable", v.filter((d) => d.state === "upcoming").every((d) => !d.claimable));
+  g("week: junk input gives an empty list and never throws", weekView(null, true).length === 0 && weekView(undefined, false).length === 0 && weekView("x", true).length === 0);
+  g("tone: 0 is 'empty', under 5 is 'low', otherwise 'ok'", tokenTone(0) === "empty" && tokenTone(3) === "low" && tokenTone(5) === "ok" && tokenTone(100) === "ok" && tokenTone(NaN) === "empty" && tokenTone(-4) === "empty");
+  g("claim message: ok mentions the amount", /\+15/.test(claimMessage({ ok: true, added: 15, balance: 40 }).text) && claimMessage({ ok: true, added: 15 }).kind === "success");
+  g("claim message: at the cap says the balance is full", /full|100/i.test(claimMessage({ ok: true, added: 0, balance: 100 }).text));
+  g("claim message: already claimed / missed / not yet are clear and not errors", ["already_claimed", "missed", "not_yet"].every((r) => claimMessage({ ok: false, reason: r }).kind === "info" && claimMessage({ ok: false, reason: r }).text.length > 8));
+  g("claim message: unknown failure is an error", claimMessage({ ok: false, reason: "zzz" }).kind === "error" && claimMessage(null).kind === "error");
+  console.log(`tokens ui: ${p} passed, ${f} failed`); if (f) process.exit(1);
+}

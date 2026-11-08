@@ -13,6 +13,9 @@ const CH = await vite.ssrLoadModule("/src/components/Chat.jsx");
 const AC = await vite.ssrLoadModule("/src/components/Account.jsx");
 const JP = await vite.ssrLoadModule("/src/components/JoinPanel.jsx");
 const DI = await vite.ssrLoadModule("/src/components/DiscordIcon.jsx");
+const TC = await vite.ssrLoadModule("/src/components/TokenChip.jsx");
+const RW = await vite.ssrLoadModule("/src/components/RewardsPanel.jsx");
+const LS = await vite.ssrLoadModule("/src/components/LockedShot.jsx");
 let pass = 0, fail = 0; const t = (n, c, d) => { if (c) pass++; else { fail++; console.log("FAIL:", n, d ?? ""); } };
 const app = (o = {}) => (globalThis.__APP__ = { sid: "s1", toast() {}, send() {}, patchSession() {}, agentBusy: false, data: { session: { agent_state: "working", mode: "chat" } }, ...o });
 const h = (C_, props = {}) => r(React.createElement(C_, props));
@@ -111,13 +114,44 @@ if (typeof O === "function") {
   o = h(AC.AccountView, { acct: null, busy: false }); t("corner Sign in button shows the Discord logo", o.includes("M20.317 4.3698") && o.includes("Sign in"), o);
 }
 
+
+// Tokens UI
+{
+  const week = [["Mon", 20], ["Tue", 15], ["Wed", 20], ["Thu", 10], ["Fri", 30], ["Sat", 15], ["Sun", 15]].map(([name, reward], i) => ({ name, reward, today: i === 6 }));
+  const st = (o = {}) => ({ balance: 40, max: 100, today: { day: "2026-11-08", reward: 15, canClaim: true }, week, costs: { message: 2, per35Words: 3, aiMinute: 3, screenshot: 2 }, ...o });
+  let o = h(TC.default, { status: null, onOpen() {} }); t("chip: renders nothing when there is no status (signed out)", o === "", o);
+  o = h(TC.default, { status: st(), onOpen() {} }); t("chip: shows the balance and a gift when today's reward is waiting", o.includes(">40<") && o.includes("lucide-gift") && /daily reward available/.test(o), o);
+  o = h(TC.default, { status: st({ today: { canClaim: false } }), onOpen() {} }); t("chip: no gift once claimed", !o.includes("lucide-gift") && !/daily reward available/.test(o), o);
+  o = h(TC.default, { status: st({ balance: 0 }), onOpen() {} }); t("chip: 0 tokens is red", o.includes("red") && o.includes(">0<"), o);
+  o = h(TC.default, { status: st({ balance: 3 }), onOpen() {} }); t("chip: low (under 5) is amber", o.includes("amber"), o);
+  o = h(RW.default, { status: st(), claiming: false, onClaim() {}, onClose() {} });
+  t("rewards: shows balance / 100", o.includes(">40<") && o.includes("/ 100"), o);
+  t("rewards: lists Mon..Sun with the exact amounts", ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].every((d) => o.includes(d)) && ["20", "15", "10", "30"].every((n) => o.includes(">" + n + "<")), o);
+  t("rewards: past days are marked missed, today is available", (o.match(/missed/g) || []).length === 6 && /Sun: 15 tokens, available today/.test(o), o);
+  t("rewards: a Claim button with today's amount", o.includes("Claim +15 tokens"), o);
+  t("rewards: states the real prices", /2 per message/.test(o) && /\+3 per 35 words/.test(o) && /3 per minute of AI work/.test(o) && /2 per screenshot/.test(o) && /topped up to 5/.test(o), o);
+  o = h(RW.default, { status: st({ today: { canClaim: false, reward: 15 } }), claiming: false, onClaim() {}, onClose() {} }); t("rewards: after claiming there is no claim button and it says missed days can't be claimed", !o.includes("Claim +") && /can(&#x27;|')t be claimed later/.test(o) && /Sun: 15 tokens, claimed/.test(o), o);
+  o = h(RW.default, { status: st(), claiming: true, onClaim() {}, onClose() {} }); t("rewards: claiming disables the button", o.includes("Claiming") && o.includes("disabled"), o);
+  o = h(RW.default, { status: null }); t("rewards: renders nothing without status", o === "", o);
+  const T = LS.ShotTile;
+  o = h(T, { state: "locked", url: null, label: "Front view", onReveal() {} }); t("locked shot: shows a lock, the price, and is a button", o.includes("lucide-lock") && o.includes("2 tokens") && o.includes("Show screenshot") && !o.includes("<img"), o);
+  o = h(T, { state: "shown", url: "https://x.supabase.co/a.png", label: "Front view" }); t("shown shot: renders the image", o.includes("<img") && o.includes("a.png") && o.includes('alt="Front view"'), o);
+  o = h(T, { state: "out", msg: "Credits Usage Limit Reached. Come Back Tomorrow.", onReveal() {} }); t("out of tokens: shows the limit message and the button is disabled", o.includes("Credits Usage Limit Reached. Come Back Tomorrow.") && o.includes("disabled") && o.includes("Out of tokens"), o);
+  o = h(T, { state: "loading", onReveal() {} }); t("loading: disabled", o.includes("Loading") && o.includes("disabled"), o);
+  o = h(T, { state: "broke", msg: "Could not load", onReveal() {} }); t("error: offers Try again", o.includes("Try again") && !o.includes("disabled"), o);
+  o = h(T, { state: "locked", label: "<img src=x onerror=alert(1)>", onReveal() {} }); t("locked shot: a hostile label is escaped", !o.includes("<img src=x"), o);
+  o = h(T, { state: "locked", cost: 4, label: "Before and after", onReveal() {} }); t("before/after tile shows the 4 token price", o.includes("4 tokens"), o);
+}
+
 // ShotStrip
 app({ data: { session: {}, screenshots: [] } }); t("no screenshots renders nothing", h(B.ShotStrip) === "");
-app({ data: { session: {}, screenshots: [{ id: 2, url: "https://x/b.png", label: "front" }, { id: 1, url: "https://x/a.png", label: "side" }, { id: 3, url: null }] } });
-o = h(B.ShotStrip); t("strip shows 2 views (url-less ones skipped)", o.includes("2 views"), o);
-t("strip has thumbs with labels", o.includes("front") && o.includes("side"));
+app({ data: { session: {}, screenshots: [{ id: "b", locked: true, label: "front" }, { id: "a", locked: true, label: "side" }, { id: "c", locked: true }] } });
+o = h(B.ShotStrip); t("strip counts every screenshot (3 views); they are all locked", o.includes("3 views") && o.includes("Show screenshot"), o);
+t("strip never renders an image before one is opened (nothing is shown for free)", !o.includes("<img"), o);
+t("strip has selectable thumbs with labels", o.includes("front") && o.includes("side"));
 t("before/after button appears with 2+ shots", o.includes("Before / after"));
-app({ data: { session: {}, screenshots: [{ id: 1, url: "https://x/a.png" }] } }); t("single shot: no compare button", !h(B.ShotStrip).includes("Before / after"));
+t("the locked tile states the 2 token price", o.includes("2 tokens"), o);
+app({ data: { session: {}, screenshots: [{ id: "a", locked: true }] } }); t("single shot: no compare button", !h(B.ShotStrip).includes("Before / after"));
 
 // ModeSwitch
 app({ data: { session: { mode: "chat" } } }); o = h(B.ModeSwitch);

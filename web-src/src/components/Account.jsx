@@ -1,13 +1,19 @@
-import React from "react";
+import React, { useState } from "react";
 import { LogOut } from "lucide-react";
-import DiscordIcon from "./DiscordIcon.jsx";
+import DiscordIcon from "./DiscordIcon.jsx"; import TokenChip from "./TokenChip.jsx"; import RewardsPanel from "./RewardsPanel.jsx"; import { useTokensCtx } from "../lib/tokensContext.jsx";
 import { useAccountCtx } from "../lib/accountContext.jsx";
 import { initials, safeAvatar } from "../lib/login.js";
 
 // Sign in with Discord. Optional: the app works anonymously. Signing in links this browser to an account so its sessions follow it to other devices.
 export default function Account() {
   const { acct, busy, signIn, signOut } = useAccountCtx();
-  return <AccountView acct={acct} busy={busy} onSignIn={signIn} onSignOut={signOut} />;
+  const { status, claiming, claim } = useTokensCtx(); const [open, setOpen] = useState(false);
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+      {acct && <TokenChip status={status} onOpen={() => setOpen(true)} />}
+      <AccountView acct={acct} busy={busy} onSignIn={signIn} onSignOut={signOut} />
+      {open && <RewardsPanel status={status} claiming={claiming} onClaim={claim} onClose={() => setOpen(false)} />}
+    </span>);
 }
 
 // Pure view: everything it shows comes from props, so it can be rendered and tested without a network.

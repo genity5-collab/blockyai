@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import LockedShot from "./LockedShot.jsx";
 import { History, Terminal, Image as Img, Undo2, Pause, Play, Download, Search, ChevronRight, Trash2, ArrowDownToLine, Sparkles, Columns2, Package } from "lucide-react";
 import Icon from "./Icon.jsx"; import { useApp } from "../lib/store.jsx"; import { web } from "../lib/api.js"; import { clock, cx } from "../lib/util.js"; import ScriptViewer from "./ScriptViewer.jsx"; import { Templates } from "./Build.jsx";
 
@@ -50,21 +51,12 @@ function Console() {
     {view && <ScriptViewer path={view.path} line={view.line} onClose={() => setView(null)} />}</div>);
 }
 function Shots() {
-  const { data, sid, send } = useApp(); const [lb, setLb] = useState(null); const [cmp, setCmp] = useState(false); const shots = data?.screenshots ?? [];
+  const { data } = useApp(); const shots = data?.screenshots ?? [];
   return (<div className="pane"><div className="list">
     {shots.length === 0 && <div className="empty"><Img size={34} color="var(--blue)" /><h4>No screenshots</h4><p>Ask Blocky to build something and it will look at it from several angles. Studio asks you to allow screenshots once; if you decline, Blocky falls back to a text description.</p></div>}
-    <div className="masonry">{shots.map((s) => <button key={s.id} className="shot" onClick={() => { setLb(s); setCmp(false); }}><img src={s.url} alt={"Screenshot " + clock(s.created_at)} loading="lazy" /></button>)}</div></div>
-    {lb && <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && setLb(null)}><div className="modal glass hud" style={{ width: "min(1000px,100%)" }}>
-      <div className="modal-h"><b style={{ flex: 1 }}>{clock(lb.created_at)}</b>
-        {shots.length > 1 && <button className="brick sm ghost" onClick={() => setCmp(!cmp)}><Columns2 size={14} />{cmp ? "Single" : "Compare"}</button>}
-        <button className="brick sm violet" onClick={() => { send(`Look at the screenshot from ${clock(lb.created_at)} and tell me what you see.`); setLb(null); }}><Sparkles size={14} />Ask AI about this</button></div>
-      <div className="modal-b">{cmp && shots[1] ? <Compare a={shots[shots.findIndex((x) => x.id === lb.id) + 1]?.url || shots[1].url} b={lb.url} /> : <img src={lb.url} style={{ width: "100%", borderRadius: 10 }} alt="Screenshot" />}</div></div></div>}
+    <div className="masonry">{shots.map((s) => <div key={s.id} className="shot"><LockedShot shot={{ ...s, label: "Screenshot " + clock(s.created_at) }} /></div>)}</div></div>
   </div>);
 }
-function Compare({ a, b }) { const [p, setP] = useState(50);
-  return (<div className="cmp"><img src={a} alt="Before" /><div className="cmp-top" style={{ clipPath: `inset(0 ${100 - p}% 0 0)` }}><img src={b} alt="After" /></div><div className="cmp-bar" style={{ left: p + "%" }} />
-    <input type="range" min="0" max="100" value={p} onChange={(e) => setP(+e.target.value)} aria-label="Compare slider" /></div>); }
-
 export default function RightPanel({ forceTab }) {
   const { data } = useApp(); const [t, setT] = useState("log"); const tab = forceTab || t; const errs = (data?.playtest_logs ?? []).filter((l) => l.level === "error").length;
   return (<div className="rp"><div className="tabs" role="tablist">

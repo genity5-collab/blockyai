@@ -1,5 +1,7 @@
 import { admin, handle, json, ownerHash, sha256, cors } from "../_shared/lib.ts";
 import { startLogin, finishLogin, avatarUrl } from "../_shared/discordflow.js";
+import { tokenDb } from "../_shared/tokendb.ts";
+import { afterSignIn } from "../_shared/tokenflow.js";
 
 // Discord login. One URL, three jobs:
 //   POST {action:"start", return_to}   (with x-client-key)  -> { url }  the browser then goes to Discord
@@ -22,8 +24,11 @@ Deno.serve(handle(async (req) => {
     const { redirect } = await finishLogin({
       cfg: cfg(), params, fetchFn: fetch, now: Date.now(), siteUrl: SITE,
       link: async ({ discordId, name, avatar, owner }: any) => {
-        const { error } = await db.rpc("link_discord_login", { p_discord_id: discordId, p_name: name, p_avatar: avatar, p_owner: owner });
+        const { data: accountId, error } = await db.rpc("link_discord_login", { p_discord_id: discordId, p_name: name, p_avatar: avatar, p_owner: owner });
         if (error) throw new Error(error.message);
+        // 30 tokens the first time this Discord account ever signs in (the database makes it once-only), plus today's 5-token floor.
+        // A token problem must never stop someone from signing in, so it is not allowed to throw.
+        try { await afterSignIn({ db: tokenDb(db, accountId as string), now: new Date() }); } catch (_e) { /* signed in anyway; the bonus is retried by the next status call */ }
       },
     });
     return new Response(null, { status: 302, headers: { Location: redirect, "Cache-Control": "no-store", ...cors } });
