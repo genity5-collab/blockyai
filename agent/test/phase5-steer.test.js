@@ -30,7 +30,7 @@ test("watcher: Stop is remembered; one query serves both checks; the query is th
 
 function harness(replies, tools, queue) {
   const seen = []; let i = 0; const posted = [];
-  const llm = async (m) => { seen.push(m.map((x) => x.content)); return { content: replies[Math.min(i++, replies.length - 1)] }; };
+  const llm = async (m) => { seen.push(m.slice(1).map((x) => x.content));   /* without the system prompt, which itself mentions the phrase */ return { content: replies[Math.min(i++, replies.length - 1)] }; };
   const pollNew = async () => queue.splice(0).map((text, k) => ({ id: "n" + k, text }));
   const run = () => handleUserMessage([], "build a yacht", { llm, tools, say: mkSay(posted), update: async () => {}, log: () => {}, logLlm: () => {}, pollNew, planApi: async (a) => (a === "get" ? { plan: null } : { ok: true, reasons: [] }) });
   return { seen, posted, run };

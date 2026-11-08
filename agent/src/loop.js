@@ -117,6 +117,8 @@ export function steerPrompt(texts) {
 import { isMutatingTool, currentTurn } from "./lifecycle.js";
 import { FailureTracker, classifyError } from "./failpolicy.js";
 import { RunLedger, factsEmbeds, findFabricated } from "./facts.js";
+import { autoEntries } from "./memory.js";
+const NO_MEMORY = { block: async () => "", save: async () => 0 };      // production passes fileMemory (index.js); tests get none, so they never touch a real file
 export { parseReply, MAX_CALLS_PER_REPLY };
 // Back-compatible wrappers. The real work (raw-body form, JSON form, bare fence, error positions, 6-call cap) is in toolparse.js.
 export const parseTools = (text) => parseReply(text).calls.map(({ name, args }) => ({ name, args }));
@@ -137,9 +139,10 @@ export function wrapUntrusted(v) {
   return `<untrusted_game_data>\n${t}\n</untrusted_game_data>`;
 }
 
-export async function handleUserMessage(history, userText, { maxIterations = 12, llm = api.llm, tools = TOOLS, say = api.say, update = api.update, shouldStop = async () => false, pollNew = async () => [], log = (r) => api.logToolCall(r), logLlm = (r) => api.logLlm(r), planApi = (action, body) => api.plan(action, body), messageId = null, contextChars = 120000 } = {}) {
+export async function handleUserMessage(history, userText, { maxIterations = 12, llm = api.llm, tools = TOOLS, say = api.say, update = api.update, shouldStop = async () => false, pollNew = async () => [], memory = NO_MEMORY, resume = false, log = (r) => api.logToolCall(r), logLlm = (r) => api.logLlm(r), planApi = (action, body) => api.plan(action, body), messageId = null, contextChars = 120000 } = {}) {
   const runId = randomUUID(); let seq = 0; let gateRejections = 0, parseFailures = 0, consecutiveTruncations = 0;
-  const msgs = [{ role: "system", content: SYSTEM }, ...history, { role: "user", content: userText }];   // userText already includes any <attachment> context
+  let memBlock = ""; try { memBlock = await memory.block(); } catch {}                // notes from earlier work on this project (file on the VM)
+  const msgs = [{ role: "system", content: SYSTEM + memBlock }, ...history, { role: "user", content: userText }];   // userText already includes any <attachment> context
   const cards = [];
   let liveId = null;
   const ledger = new RunLedger();                         // what the tools REALLY returned this run: the system builds the final facts table from this, not the model
@@ -152,9 +155,11 @@ export async function handleUserMessage(history, userText, { maxIterations = 12,
     if (outcome !== "complete") { try { await planApi("abandon", {}); } catch {} }
     const facts = factsEmbeds(ledger, content, { outcome });
     await say("assistant", content, showCards && cards.length ? cards : null, state, facts.length || embeds ? [...(embeds || []), ...facts] : null, outcome);
+    // What this run REALLY did (from the ledger, not the model's words) becomes project memory for the next run.
+    try { const e = autoEntries({ userText, outcome, ledger }); if (e.length) await memory.save(e); } catch {}
   };
   // A new user turn: a plan left over from an EARLIER message must never gate this one.
-  try { await planApi("begin_turn", { message_id: messageId }); } catch {}
+  if (!resume) { try { await planApi("begin_turn", { message_id: messageId }); } catch {} }      // a RESUMED run keeps the plan the interrupted run made
   for (let i = 1; i <= maxIterations; i++) {
     if (await shouldStop()) { await finish("stopped", "Stopped. Tell me what to do next."); return; }
     try { pendingSteer.push(...(await pollNew())); } catch {}
