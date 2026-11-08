@@ -208,3 +208,30 @@
 .md-copy.ok{border-color:var(--green);color:var(--green);box-shadow:0 0 12px rgba(2,255,138,.3)}
 .md-copy.bad{border-color:var(--amber);color:var(--amber)}
 .md-copy:disabled{opacity:.4;cursor:default}
+
+/* ---- Pictures, galleries and link cards the AI shows ---- */
+.mfig{margin:0;display:grid;gap:6px;min-width:0}
+.mfig figcaption{font-size:12px;color:var(--mut);overflow-wrap:anywhere}.mfig figcaption a{color:var(--blue)}
+.mimg-frame{position:relative;width:100%;max-width:100%;border-radius:12px;background:var(--s1);border:2px solid var(--line);overflow:hidden}
+.mimg-ph{position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:6px;color:var(--mut);font-size:12px}.mimg-ph.err{color:var(--amber)}
+.mimg-btn{display:block;padding:0;margin:0;border:2px solid var(--line);border-radius:12px;background:var(--s1);overflow:hidden;cursor:zoom-in;max-width:100%;line-height:0;width:fit-content}
+.mimg-btn.plain{cursor:inherit}.mimg-btn:not(.plain):hover{border-color:var(--line2);box-shadow:0 0 16px rgba(0,162,255,.25)}
+.mimg-btn img{display:block;max-width:100%;max-height:360px;width:auto;height:auto;object-fit:contain}
+.mimg-btn.compact img{max-height:200px}
+.mgal{display:grid;gap:8px;grid-template-columns:repeat(2,minmax(0,1fr))}.mgal[data-n="1"]{grid-template-columns:1fr}
+.mgal .mimg-btn{width:100%}.mgal .mimg-btn img{width:100%;height:150px;object-fit:cover}
+.lightbox{position:fixed;inset:0;z-index:1000;background:rgba(5,7,12,.92);display:grid;place-items:center;align-content:center;gap:10px;padding:16px;cursor:zoom-out;overscroll-behavior:contain}
+.lightbox img{max-width:100%;max-height:calc(100dvh - 90px);object-fit:contain;border-radius:10px;cursor:default;box-shadow:0 0 40px rgba(0,162,255,.3)}
+.lightbox-x{position:absolute;top:max(12px,env(safe-area-inset-top));right:12px;width:42px;height:42px;border-radius:12px;border:2px solid var(--line2);background:var(--s2);color:var(--tx);display:grid;place-items:center;cursor:pointer}
+.lightbox-cap{max-width:min(92vw,640px);color:var(--mut);font-size:13px;text-align:center;overflow-wrap:anywhere}
+.mlink{display:flex;gap:12px;align-items:center;padding:10px 12px;border-radius:14px;background:var(--s1);border:2px solid var(--line);color:var(--tx);text-decoration:none;min-width:0}
+.mlink:hover{border-color:var(--blue);box-shadow:0 0 18px rgba(0,162,255,.25)}
+.mlink-th{position:relative;flex:0 0 96px;width:96px;border-radius:10px;overflow:hidden;line-height:0}.mlink-th .mimg-btn{border:0;border-radius:10px;cursor:pointer;width:100%}.mlink-th .mimg-btn img{width:96px;height:64px;object-fit:cover}
+.mlink-th .mimg-frame{border-radius:10px}
+.mlink-play{position:absolute;inset:0;display:grid;place-items:center;color:#fff;background:rgba(5,7,12,.35)}
+.mlink-ic{flex:0 0 44px;height:44px;border-radius:12px;display:grid;place-items:center;background:var(--s2);color:var(--blue)}
+.mlink-tx{min-width:0;flex:1;display:grid;gap:2px}.mlink-tx b{overflow-wrap:anywhere;line-height:1.25}.mlink-tx p{margin:0;color:var(--mut);font-size:12.5px;overflow-wrap:anywhere}
+.mlink-k{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--blue)}.mlink-k span{color:var(--mut);text-transform:none;letter-spacing:0;margin-left:4px}
+.mlink-go{flex:0 0 auto;color:var(--mut)}
+.spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}}

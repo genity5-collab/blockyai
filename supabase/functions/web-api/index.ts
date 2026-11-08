@@ -146,6 +146,15 @@ Deno.serve(handle(async (req) => {
       const { data: sig } = await db.storage.from("attachments").createSignedUrl(a.storage_path, 600);
       return json({ url: sig?.signedUrl ?? null });
     }
+    // A picture the AI showed in chat. Short-lived signed link, and only for a session the caller owns (need() checked the owner key).
+    case "media_url": {
+      need();
+      const id = String(body.id ?? "").toLowerCase(); if (!/^[0-9a-f-]{36}$/.test(id)) return json({ error: "not found" }, 404);
+      const { data: m } = await db.from("media").select("storage_path,mime,width,height,name").eq("id", id).eq("session_id", session.id).maybeSingle();
+      if (!m) return json({ error: "not found" }, 404);
+      const { data: sig } = await db.storage.from("media").createSignedUrl(m.storage_path, 3600);
+      return json({ url: sig?.signedUrl ?? null, mime: m.mime, width: m.width, height: m.height, name: m.name });
+    }
     case "stop_agent": {
       need();
       await db.from("sessions").update({ agent_state: "idle", last_active_at: new Date().toISOString() }).eq("id", session.id);

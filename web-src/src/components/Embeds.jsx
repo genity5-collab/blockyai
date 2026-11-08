@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Info, Lightbulb, TriangleAlert, CircleCheck, ListOrdered, ListChecks, Copy, Check, Code2, Table2 } from "lucide-react";
+import { Info, Lightbulb, TriangleAlert, CircleCheck, ListOrdered, ListChecks, Copy, Check, Code2, Table2, Image as ImageIcon, Images, Link2 } from "lucide-react";
+import { ImageEmbed, GalleryEmbed, LinkCard, Lightbox } from "./MediaEmbeds.jsx";
 
 // Renders AI "embeds". All values are plain strings shown as TEXT (React escapes them). Nothing is ever executed or injected as HTML.
 const META = {
@@ -7,6 +8,7 @@ const META = {
   warning: { icon: TriangleAlert, color: "var(--amber)" }, success: { icon: CircleCheck, color: "var(--green)" },
   steps: { icon: ListOrdered, color: "var(--blue)" }, checklist: { icon: ListChecks, color: "var(--green)" },
   code: { icon: Code2, color: "var(--blue)" }, table: { icon: Table2, color: "var(--violet)" },
+  image: { icon: ImageIcon, color: "var(--blue)" }, gallery: { icon: Images, color: "var(--blue)" }, link: { icon: Link2, color: "var(--blue)" },
 };
 
 function CodeEmbed({ e }) {
@@ -18,8 +20,14 @@ function CodeEmbed({ e }) {
 }
 
 export default function Embeds({ list }) {
+  const [pic, setPic] = useState(null);
   if (!Array.isArray(list) || !list.length) return null;
-  return (<div className="embeds">{list.map((e, i) => {
+  return (<div className="embeds"><Lightbox pic={pic} onClose={() => setPic(null)} />{list.map((e, i) => {
+    if (!e || typeof e !== "object") return null;       // never let one bad entry blank the whole chat
+    // Pictures and link cards are shown bare (no titled box) so they read as part of the reply.
+    if (e.type === "image") return <ImageEmbed key={i} e={e} onOpen={setPic} />;
+    if (e.type === "gallery") return <GalleryEmbed key={i} e={e} onOpen={setPic} />;
+    if (e.type === "link") return <LinkCard key={i} e={e} />;
     const m = META[e.type] || META.info; const Ic = m.icon;
     return (<div key={i} className={"embed e-" + e.type} style={{ "--ec": m.color }}>
       <div className="emb-h"><Ic size={16} /><b>{e.title || e.type}</b></div>
