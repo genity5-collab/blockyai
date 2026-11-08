@@ -176,3 +176,4 @@
 .linkbtn:hover{color:var(--tx)}.linkbtn:focus-visible{outline:2px solid var(--blue);outline-offset:2px}.linkbtn:disabled{opacity:.5;cursor:default}
 .acct-name{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media (max-width:520px){.acct-name{max-width:96px}}
+.trust{display:flex;align-items:flex-start;gap:7px;text-align:left;max-width:340px}.trust svg{flex:none;margin-top:2px;color:var(--green)}

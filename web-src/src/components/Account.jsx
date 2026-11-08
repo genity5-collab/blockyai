@@ -1,5 +1,6 @@
 import React from "react";
-import { LogIn, LogOut } from "lucide-react";
+import { LogOut } from "lucide-react";
+import DiscordIcon from "./DiscordIcon.jsx";
 import { useAccountCtx } from "../lib/accountContext.jsx";
 import { initials, safeAvatar } from "../lib/login.js";
 
@@ -12,7 +13,7 @@ export default function Account() {
 // Pure view: everything it shows comes from props, so it can be rendered and tested without a network.
 export function AccountView({ acct, busy, onSignIn, onSignOut }) {
   if (acct === undefined) return <span className="chip hide-sm" aria-busy="true" style={{ opacity: 0.5 }}>…</span>;
-  if (!acct) return <button className="brick sm blue" onClick={onSignIn} disabled={busy} title="Sign in with Discord to keep your sessions across devices"><LogIn size={14} />{busy ? "Opening Discord…" : "Sign in"}</button>;
+  if (!acct) return <button className="brick sm blue" onClick={onSignIn} disabled={busy} title="Sign in with Discord to keep your sessions across devices"><DiscordIcon size={15} />{busy ? "Opening Discord…" : "Sign in"}</button>;
   const av = safeAvatar(acct.avatar_url);
   return (
     <span className="chip" title={`Signed in with Discord as ${acct.name}`} style={{ gap: 8 }}>

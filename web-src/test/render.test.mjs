@@ -12,6 +12,7 @@ const K = await vite.ssrLoadModule("/src/components/Capability.jsx");
 const CH = await vite.ssrLoadModule("/src/components/Chat.jsx");
 const AC = await vite.ssrLoadModule("/src/components/Account.jsx");
 const JP = await vite.ssrLoadModule("/src/components/JoinPanel.jsx");
+const DI = await vite.ssrLoadModule("/src/components/DiscordIcon.jsx");
 let pass = 0, fail = 0; const t = (n, c, d) => { if (c) pass++; else { fail++; console.log("FAIL:", n, d ?? ""); } };
 const app = (o = {}) => (globalThis.__APP__ = { sid: "s1", toast() {}, send() {}, patchSession() {}, agentBusy: false, data: { session: { agent_state: "working", mode: "chat" } }, ...o });
 const h = (C_, props = {}) => r(React.createElement(C_, props));
@@ -89,6 +90,25 @@ if (typeof O === "function") {
   t("join (signed in): welcomes by name and offers Start new session", o.includes("Welcome back, Nelly") && o.includes("Start new session") && !o.includes("Continue with Discord"), o);
   o = h(J, { acct: { name: "<img src=x onerror=alert(1)>" }, busy: false, onDiscord: noop, onStart: noop }); t("join: a hostile display name is escaped", !o.includes("<img src=x"), o);
   o = h(J, { acct: { name: "" }, busy: false, onDiscord: noop, onStart: noop }); t("join: an empty name still welcomes gracefully", o.includes("Welcome back") && !o.includes("undefined"), o);
+}
+
+
+// Discord icon + icons around the auth UI
+{
+  const D = DI.default;
+  let o = h(D, { size: 20 });
+  t("discord icon is an inline svg (no network, CSP-safe)", o.startsWith("<svg") && o.includes("<path") && !/https?:\/\/(?!www\.w3\.org)/.test(o) && !o.includes("<image") && !o.includes("<use"), o);
+  t("discord icon uses the page text colour (currentColor), so it matches the button", o.includes('fill="currentColor"'), o);
+  t("discord icon has the requested size", o.includes('width="20"') && o.includes('height="20"'), o);
+  t("discord icon is decorative by default (hidden from screen readers)", o.includes('aria-hidden="true"') && !o.includes("<title"), o);
+  o = h(D, { size: 16, title: "Discord" }); t("discord icon with a title is exposed to screen readers", o.includes("<title>Discord</title>") && o.includes('role="img"') && !o.includes('aria-hidden'), o);
+  o = h(D, {}); t("discord icon has a sane default size", /width="\d+"/.test(o), o);
+  const J = JP.default, noop = () => {};
+  o = h(J, { acct: null, busy: false, onDiscord: noop, onStart: noop });
+  t("Continue with Discord button shows the Discord logo (not the generic arrow)", /<button[^>]*>\s*<svg[^>]*>[\s\S]*?<\/svg>Continue with Discord/.test(o) && o.includes("M20.317 4.3698"), o);
+  t("trust line has a shield icon", /lucide-shield-check/.test(o), o);
+  o = h(J, { acct: { name: "Nelly" }, busy: false, onDiscord: noop, onStart: noop }); t("signed-in welcome has an icon too", /lucide-sparkles/.test(o), o);
+  o = h(AC.AccountView, { acct: null, busy: false }); t("corner Sign in button shows the Discord logo", o.includes("M20.317 4.3698") && o.includes("Sign in"), o);
 }
 
 // ShotStrip
