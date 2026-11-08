@@ -10,6 +10,7 @@ const B = await vite.ssrLoadModule("/src/components/Build.jsx");
 const C = await vite.ssrLoadModule("/src/components/Cards.jsx");
 const K = await vite.ssrLoadModule("/src/components/Capability.jsx");
 const CH = await vite.ssrLoadModule("/src/components/Chat.jsx");
+const AC = await vite.ssrLoadModule("/src/components/Account.jsx");
 let pass = 0, fail = 0; const t = (n, c, d) => { if (c) pass++; else { fail++; console.log("FAIL:", n, d ?? ""); } };
 const app = (o = {}) => (globalThis.__APP__ = { sid: "s1", toast() {}, send() {}, patchSession() {}, agentBusy: false, data: { session: { agent_state: "working", mode: "chat" } }, ...o });
 const h = (C_, props = {}) => r(React.createElement(C_, props));
@@ -52,6 +53,22 @@ if (typeof O === "function") {
   t("Chat shows exactly one INCOMPLETE badge", (html.match(/INCOMPLETE/g) || []).length === 1, html.slice(0, 200));
   t("Chat shows the Stopped badge once", (html.match(/outcome-stopped/g) || []).length === 1);
   t("Chat does not badge complete or old messages", (html.match(/class="outcome /g) || []).length === 2);
+}
+
+
+// Account button (Discord login)
+{
+  const V = AC.AccountView;
+  let o = h(V, { acct: null, busy: false });
+  t("signed out: shows a Sign in button", o.includes("Sign in") && o.includes("<button") && !o.includes("disabled"), o);
+  o = h(V, { acct: null, busy: true }); t("signed out + busy: button disabled and says Opening Discord", o.includes("disabled") && o.includes("Opening Discord"), o);
+  o = h(V, { acct: undefined, busy: false }); t("loading: a quiet placeholder, no sign-in button", o.includes("aria-busy") && !o.includes("Sign in"), o);
+  o = h(V, { acct: { name: "Nelly", avatar_url: "https://cdn.discordapp.com/avatars/123/abc.png?size=64" }, busy: false });
+  t("signed in: shows the name, the avatar and a sign-out button", o.includes("Nelly") && o.includes("cdn.discordapp.com/avatars/123/abc.png") && o.includes("Sign out"), o);
+  o = h(V, { acct: { name: "Nelly Smith", avatar_url: null }, busy: false }); t("signed in without an avatar: shows initials", o.includes(">NS<") && !o.includes("<img"), o);
+  o = h(V, { acct: { name: "x", avatar_url: "https://evil.com/a.png" }, busy: false }); t("a non-Discord avatar url is never rendered", !o.includes("evil.com") && !o.includes("<img"), o);
+  o = h(V, { acct: { name: "<img src=x onerror=alert(1)><script>alert(2)</script>", avatar_url: null }, busy: false }); t("a hostile display name is escaped", !o.includes("<script>") && !o.includes("<img src=x"), o);
+  o = h(V, { acct: { name: "Nelly", avatar_url: null }, busy: true }); t("signed in + busy: sign-out is disabled", o.includes("disabled"), o);
 }
 
 // ShotStrip

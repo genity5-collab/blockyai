@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { MessageSquare, FolderTree, Save, Camera, Settings, Plus, Search, RotateCcw, Menu, X, ListTree, Terminal, History } from "lucide-react";
 import Logo from "./Logo.jsx"; import { useApp } from "../lib/store.jsx"; import { cx, fmtDur, ago } from "../lib/util.js";
-import Chat from "./Chat.jsx"; import RightPanel from "./RightPanel.jsx"; import Explorer from "./Explorer.jsx";
+import Account from "./Account.jsx"; import Chat from "./Chat.jsx"; import RightPanel from "./RightPanel.jsx"; import Explorer from "./Explorer.jsx";
 import { SnapshotsView, ShotsView } from "./Views.jsx"; import SettingsPanel from "./SettingsPanel.jsx"; import Palette from "./Palette.jsx";
 
 const NAV = [["chat", MessageSquare, "Chat"], ["explorer", FolderTree, "Explorer"], ["snaps", Save, "Snapshots"], ["shots", Camera, "Screenshots"], ["settings", Settings, "Settings"]];
@@ -31,6 +31,7 @@ export default function Workspace() {
         <span className={cx("chip hide-sm", vmChip[0])}><i className={cx("dot", vmState === "starting" && "pulse")} />{vmChip[1]}</span>
         <span className="chip hide-sm"><span className="num">{ping ?? "--"}</span>ms</span>
         <div style={{ flex: 1 }} />
+        <Account />
         <button className="brick sm ghost hide-sm" onClick={() => setPal(true)}><Search size={14} />Search <kbd>Ctrl K</kbd></button>
         <button className="brick sm amber" onClick={() => ensureVm(true)} disabled={vmBusy} title="Destroy and restart the agent VM"><RotateCcw size={14} />Restart VM</button>
         <select className="sel hide-sm" value={sid} onChange={(e) => select(e.target.value)} aria-label="Switch session">{(sessions ?? []).filter((x) => x.plugin_connected_at).map((x) => <option key={x.id} value={x.id}>{x.title}</option>)}</select>
