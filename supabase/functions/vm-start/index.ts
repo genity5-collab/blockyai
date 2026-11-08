@@ -46,6 +46,8 @@ Deno.serve(handle(async (req) => {
     await vm.exec("sudo chown ubuntu:ubuntu /etc/blockyai.env; sudo chmod 600 /etc/blockyai.env");
     await stage("creds");
     await vm.exec("sudo systemctl daemon-reload; sudo systemctl restart blockyai-agent");
+    // The AI's own screen. Started in the background (it takes a few seconds) and NOT required: if it is missing or fails, the AI still works, it just has no screen.
+    try { await vm.exec("if systemctl list-unit-files blockyai-screen.service >/dev/null 2>&1; then (sudo systemctl start blockyai-screen --no-block) ; fi"); } catch { /* optional */ }
     await stage("service");
     // Verify the agent really is up. Never report "running" on faith.
     let up = false;

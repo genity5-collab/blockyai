@@ -42,6 +42,7 @@ export function buildFacts(ledger) {
   const lints = L.filter((c) => c.name === "vm_lint_luau" && c.ok); if (lints.length) { const p = lints.filter((c) => c.result?.passed === true).length; rows.push(["Lint (on the VM)", `${p} passed, ${lints.length - p} failed`]); }
   const runs = L.filter((c) => c.name === "vm_run_luau" && c.ok); if (runs.length) { const p = runs.filter((c) => c.result?.exit_code === 0).length; rows.push(["Code run on the VM", `${p} exited cleanly, ${runs.length - p} failed`]); }
   const web = okc((c) => c.name === "vm_web_fetch" || c.name === "vm_web_search").length; if (web) rows.push(["Web", `${web} lookup(s)`]);
+  const scr = okc((c) => /^vm_(screen_|browser_)/.test(c.name)).length; if (scr) rows.push(["Screen", `${scr} action(s)`]);
   const failed = L.filter((c) => !c.ok);
   rows.push(["Tool calls", `${L.length} total, ${failed.length} failed`]);
   const last = L.at(-1); if (last && !last.ok) rows.push(["Last step", `FAILED: ${last.name}: ${last.error}`.slice(0, 160)]);

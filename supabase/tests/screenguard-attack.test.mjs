@@ -24,3 +24,4 @@ ok(frameDecision({ url: { toString() { throw 1; } }, title: "", text: "" }).show
 ok(frameDecision({ url: "https://create.roblox.com/docs", title: Object.create(null), text: "ok" }).show === false, "an unreadable title hides the frame");
 ok(frameDecision({ url: "https://create.roblox.com/docs", title: "t", text: Object.create(null) }).show === false, "unreadable text hides the frame");
 console.log(`screenguard-attack: ${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
+

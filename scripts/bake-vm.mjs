@@ -32,7 +32,7 @@ await sh("sudo mkdir -p /opt/blockyai/agent && sudo chown -R ubuntu:ubuntu /opt/
 for (const p of files) { const rel = relative(ROOT, p); await sh(`mkdir -p /opt/blockyai/agent/$(dirname ${rel})`); await vm.fs.writeFile("/opt/blockyai/agent/" + rel, readFileSync(p, "utf8")); }
 // Shared server files the agent imports from outside agent/ (e.g. policy.js). They must sit at the SAME relative path on the VM
 // (/opt/blockyai/supabase/functions/_shared/...), or the agent crashes at start. test/phase1-bakedeps.test.js keeps this list honest.
-const SHARED = ["supabase/functions/_shared/policy.js"];
+const SHARED = ["supabase/functions/_shared/policy.js", "supabase/functions/_shared/screenguard.js"];
 await sh("mkdir -p /opt/blockyai/supabase/functions/_shared");
 for (const f of SHARED) await vm.fs.writeFile("/opt/blockyai/" + f, readFileSync(ROOT + "/../" + f, "utf8"));
 // tests too, but kept outside the service path, to run them here
@@ -40,6 +40,32 @@ for (const f of SHARED) await vm.fs.writeFile("/opt/blockyai/" + f, readFileSync
 const tests = readdirSync(ROOT + "/test").filter((n) => n.endsWith(".js") && !n.startsWith(".") && n !== "acceptance.test.js");
 await sh("mkdir -p /opt/blockyai/agent/test"); for (const n of tests) await vm.fs.writeFile("/opt/blockyai/agent/test/" + n, readFileSync(ROOT + "/test/" + n, "utf8"));
 console.log("copied", files.length, "files +", tests.length, "tests");
+
+// 2b. The AI's own screen (virtual display + Chrome + mouse/keyboard library). Kept in screen/, separate from agent/. Installer is slow (about 90 s), so it runs in
+// the background and is polled, as Freestyle recommends for browser installs.
+const SCREEN = join(ROOT, "..", "screen");
+await sh("sudo mkdir -p /opt/blockyai/screen && sudo chown -R ubuntu:ubuntu /opt/blockyai");
+for (const n of ["screen.js", "install-screen.sh", "start-screen.sh", "blockyai-screen.service"]) await vm.fs.writeFile("/opt/blockyai/screen/" + n, readFileSync(join(SCREEN, n), "utf8"));
+for (const n of ["screenflow.js", "mediacheck.js"]) await vm.fs.writeFile("/opt/blockyai/supabase/functions/_shared/" + n, readFileSync(join(ROOT, "..", "supabase/functions/_shared", n), "utf8"));
+await sh("chmod +x /opt/blockyai/screen/*.sh; rm -f /tmp/screen-install.done; (nohup bash /opt/blockyai/screen/install-screen.sh > /tmp/screen-install.out 2>&1; touch /tmp/screen-install.done) > /dev/null 2>&1 &");
+for (let i = 0; i < 40; i++) { if ((await sh("test -f /tmp/screen-install.done && echo D")).out === "D") break; await new Promise((r) => setTimeout(r, 8000)); }
+const scr = await sh("tail -4 /tmp/screen-install.out"); console.log(scr.out);
+if (!/ALL TOOLS PRESENT/.test(scr.out)) await fail("the screen tools did not install");
+await sh("sudo cp /opt/blockyai/screen/blockyai-screen.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable blockyai-screen 2>&1 | tail -1");
+// PROVE the screen really works before snapshotting: start it, capture a real frame, read the page through the browser, run the privacy check on it.
+await sh("sudo systemctl restart blockyai-screen"); await new Promise((r) => setTimeout(r, 5000));
+await vm.fs.writeFile("/opt/blockyai/screen/selfcheck.mjs", `import * as S from "/opt/blockyai/screen/screen.js"; import { planFrame } from "/opt/blockyai/supabase/functions/_shared/screenflow.js";
+const w = (ms) => new Promise((r) => setTimeout(r, ms)); let o = {};
+o.open = (await S.openUrl({ url: "https://example.com/" })).ok; await w(4000);
+const fr = await S.frame({ activity: "self check" }); o.frame = fr.ok; o.title = fr.payload?.title; o.shape = fr.ok && fr.payload.image.length > 5000;
+const plan = fr.ok ? planFrame(fr.payload, null, Date.now()) : { action: "none" }; o.decision = plan.action; o.size = plan.row ? plan.row.width + "x" + plan.row.height : null;
+o.loginHidden = planFrame({ ...fr.payload, url: "https://example.com/login" }, null, Date.now()).action === "hide";
+o.k = (await S.pressKey({ key: "ctrl+l" })).ok; o.c = (await S.click({ x: 400, y: 300 })).ok;
+console.log("SELFCHECK " + JSON.stringify(o)); process.exit(o.open && o.frame && o.shape && o.decision === "show" && o.loginHidden && o.k && o.c ? 0 : 1);`);
+const sc = await sh("cd /opt/blockyai/screen && DISPLAY=:0 timeout 60 node selfcheck.mjs 2>&1 | tail -3"); console.log(sc.out);
+if (sc.code !== 0 || !/"decision":"show"/.test(sc.out)) await fail("the AI screen does not work on the VM: " + sc.out.slice(0, 300));
+await sh("sudo systemctl stop blockyai-screen");   // a fresh VM starts it on demand; the snapshot must not carry a running browser or a used profile
+await sh("rm -rf /home/ubuntu/chrome-profile /tmp/chrome.deb /tmp/screen-*.jpg");
 
 // 3. templates and reference specs go where the agent can read them
 await sh("mkdir -p /home/ubuntu/project/templates /home/ubuntu/project/reference && cp /opt/blockyai/agent/templates/* /home/ubuntu/project/templates/ && cp /opt/blockyai/agent/reference/* /home/ubuntu/project/reference/");

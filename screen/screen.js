@@ -68,6 +68,21 @@ export async function pageInfo() {
     return { url: v.url, title: v.title, text: v.text, has_password_field: !!(v.pw || v.forms) };
   } catch { return { unreadable: true }; }
 }
+// What the AI can read and click on the page right now: the visible text (capped) and a numbered list of clickable things with the centre of each on the SCREEN
+// (browser window offset included), so the AI clicks by reading instead of guessing pixels. Everything here is page content: untrusted data.
+export async function pageMap({ maxText = 6000, maxItems = 60 } = {}) {
+  const info = await pageInfo(); if (info.unreadable) return { ok: false, error: "the page could not be read (is the browser open?)" };
+  const maxI = Math.min(Math.max(Math.round(+maxItems) || 60, 1), 120);
+  let items = []; try {
+    items = await cdpEval(`(()=>{const out=[];const ox=window.screenX+(window.outerWidth-window.innerWidth)/2,oy=window.screenY+(window.outerHeight-window.innerHeight);
+      const els=[...document.querySelectorAll('a[href],button,input:not([type=hidden]),select,textarea,[role=button],[role=link],[role=tab],[onclick]')];
+      for(const e of els){const r=e.getBoundingClientRect();if(r.width<4||r.height<4||r.bottom<0||r.top>innerHeight||r.right<0||r.left>innerWidth)continue;const cs=getComputedStyle(e);if(cs.visibility==='hidden'||cs.display==='none')continue;
+        const label=(e.innerText||e.value||e.placeholder||e.getAttribute('aria-label')||e.title||e.alt||'').replace(/\s+/g,' ').trim().slice(0,70);
+        out.push({kind:e.tagName.toLowerCase()+(e.type&&e.tagName==='INPUT'?':'+e.type:''),label,x:Math.round(ox+r.left+r.width/2),y:Math.round(oy+r.top+r.height/2)});if(out.length>=${maxI})break;}return out})()`) ?? [];
+  } catch { items = []; }
+  const clean = (Array.isArray(items) ? items : []).filter((i) => i && Number.isFinite(i.x) && Number.isFinite(i.y)).map((i, n) => ({ n: n + 1, kind: String(i.kind).slice(0, 20), label: String(i.label ?? "").slice(0, 70), x: i.x, y: i.y }));
+  return { ok: true, url: info.url, title: info.title, text: info.text.replace(/\n{3,}/g, "\n\n").slice(0, Math.min(Math.max(+maxText || 6000, 500), 20000)), total_chars: info.text.length, has_password_field: info.has_password_field, items: clean };
+}
 export async function openUrl({ url } = {}) {
   let u; try { u = new URL(String(url ?? "")); } catch { return { ok: false, error: "that is not a web address" }; }
   if (u.protocol !== "https:" && u.protocol !== "http:") return { ok: false, error: "only http and https addresses can be opened" };

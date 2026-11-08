@@ -52,6 +52,19 @@ export function urlRisk(raw) {
   return { risky: false };
 }
 
+// Replaces every secret-shaped piece of text with [hidden], using the SAME patterns as textRisk, so the detector and the scrubber cannot disagree.
+// For text the MODEL will read off a web page: a page can show someone's key, and the model must not receive it. Never throws; unreadable input becomes "".
+export function scrubSecrets(text) {
+  const t0 = toStr(text); if (t0 === UNREADABLE) return "";
+  let out = t0.slice(0, 200_000);
+  for (const [name, re] of SECRET_PATTERNS) {
+    const g = new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g");
+    // The card pattern lets a digit carry a trailing space or dash, so a match can end with one. Give it back so the words around the number stay apart.
+    out = out.replace(g, (m) => { if (name === "credit card" && !luhn(m)) return m; const tail = /[ -]+$/.exec(m); return "[hidden]" + (tail ? tail[0] : ""); });
+  }
+  return out;
+}
+
 export function textRisk(text) {
   const t0 = toStr(text); if (t0 === UNREADABLE) return { risky: true, why: "text I could not read" };
   const t = t0.slice(0, 200_000);

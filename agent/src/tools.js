@@ -350,3 +350,5 @@ import { BUILD_TOOLS } from "./tools-build.js";
 Object.assign(TOOLS, BUILD_TOOLS);
 import { VM_EXTRA_TOOLS } from "./tools-vm.js";
 Object.assign(TOOLS, VM_EXTRA_TOOLS);
+import { VM_SCREEN_TOOLS } from "./tools-screen.js";
+Object.assign(TOOLS, VM_SCREEN_TOOLS);
