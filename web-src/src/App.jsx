@@ -28,7 +28,7 @@ export default function App() {
     <AccountProvider value={account}><TokensProvider value={tokens}>
       <div className={"app" + (reduce ? " reduce" : "")}>
         <World />
-        {diag ? <Diagnostics /> : cap ? <Capability /> : gate ? <SignInGate busy={account.busy} onDiscord={account.signIn} /> : sid && connected ? <Workspace /> : <Landing />}
+        {diag ? <Diagnostics /> : cap ? <Capability /> : gate ? <SignInGate busy={account.busy} onDiscord={account.signIn} /> : sid && (connected || account.acct?.chat_only === true) ? <Workspace /> : <Landing />}
         <Toasts />
       </div>
     </TokensProvider></AccountProvider>

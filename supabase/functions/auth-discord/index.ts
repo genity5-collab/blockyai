@@ -44,8 +44,8 @@ Deno.serve(handle(async (req) => {
     const db = admin();
     const { data: k } = await db.from("account_keys").select("account_id").eq("owner_key_hash", owner).maybeSingle();
     if (!k) return json({ account: null });
-    const { data: a } = await db.from("accounts").select("id,discord_id,name,avatar").eq("id", k.account_id).maybeSingle();
-    return json({ account: a ? { id: a.id, name: a.name, avatar_url: avatarUrl(a.discord_id, a.avatar) } : null });
+    const { data: a } = await db.from("accounts").select("id,discord_id,name,avatar,chat_only").eq("id", k.account_id).maybeSingle();
+    return json({ account: a ? { id: a.id, name: a.name, avatar_url: avatarUrl(a.discord_id, a.avatar), chat_only: a.chat_only === true } : null });
   }
   if (b.action === "logout") {
     const db = admin();

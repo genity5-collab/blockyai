@@ -95,7 +95,7 @@ export function AppProvider({ children }) {
 
   // Auto-resume: if the VM was suspended/errored and the user is on a live chat, bring it back.
   useEffect(() => { const s = data?.session; if (!s || vmTry.current > 2) return;
-    if (s.plugin_connected_at && ["suspended", "error", "stopped"].includes(s.vm_status) && ["thinking", "working"].includes(s.agent_state)) { vmTry.current++; ensureVm(); } }, [data?.session?.vm_status, data?.session?.agent_state]);
+    if (["suspended", "error", "stopped"].includes(s.vm_status) && ["thinking", "working"].includes(s.agent_state)) { vmTry.current++; ensureVm(); } }, [data?.session?.vm_status, data?.session?.agent_state]);
 
   const value = { sessions, sid, data, ping, toasts, pairing, setPairing, stats, toast, select, createSession, refreshPairing, deleteSession, loadSessions, ensureVm, vmBusy, send, stop, upload, agentBusy, patchSession, queue };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
