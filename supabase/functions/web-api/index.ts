@@ -146,6 +146,21 @@ Deno.serve(handle(async (req) => {
       const { data: sig } = await db.storage.from("attachments").createSignedUrl(a.storage_path, 600);
       return json({ url: sig?.signedUrl ?? null });
     }
+    // The live view of the AI's computer. Latest frame only. The picture travels INSIDE this response (base64), never as a link: a link to a stored file can be
+    // cached by the CDN and keep working after the frame was deleted, which would leak a frame that was later found to be private.
+    // `since` = the seq the site already has: if nothing changed we send no picture at all.
+    case "screen_latest": {
+      need();
+      const { data: f } = await db.from("screen_frames").select("seq,shown,hidden_kind,hidden_why,storage_path,width,height,title,host,activity,updated_at").eq("session_id", session.id).maybeSingle();
+      if (!f) return json({ seq: 0, none: true });
+      const base = { seq: f.seq, updated_at: f.updated_at, activity: f.activity };
+      if (!f.shown) return json({ ...base, shown: false, kind: f.hidden_kind, why: f.hidden_why });
+      if (Number(body.since) === f.seq) return json({ ...base, shown: true, unchanged: true, width: f.width, height: f.height, title: f.title, host: f.host });
+      const { data: blob } = await db.storage.from("screen").download(f.storage_path);
+      if (!blob) return json({ ...base, shown: false, kind: "error", why: "the picture is not available yet" });       // deleted a moment ago: show nothing, never guess
+      const bytes = new Uint8Array(await blob.arrayBuffer()); let bin = ""; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      return json({ ...base, shown: true, image: btoa(bin), mime: blob.type || "image/jpeg", width: f.width, height: f.height, title: f.title, host: f.host });
+    }
     // A picture the AI showed in chat. Short-lived signed link, and only for a session the caller owns (need() checked the owner key).
     case "media_url": {
       need();

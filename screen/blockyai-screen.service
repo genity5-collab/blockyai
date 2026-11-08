@@ -1,0 +1,13 @@
+[Unit]
+Description=BlockyAI virtual screen (display, window manager, browser)
+After=network-online.target
+
+[Service]
+User=ubuntu
+Type=oneshot
+ExecStart=/opt/blockyai/screen/start-screen.sh
+ExecStop=/usr/bin/pkill -u ubuntu -f "Xvfb :0|openbox|google-chrome"
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
