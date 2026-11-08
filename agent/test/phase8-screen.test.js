@@ -123,3 +123,11 @@ test("the policy and the tool list the model reads mention the screen and the sa
   for (const w of ["vm_browser_open", "vm_screen_look", "user_can_see:false", "untrusted", "Never log in"]) assert.ok(SYSTEM.includes(w), w + " missing from the system prompt");
   assert.ok(SYSTEM.length < 24000, "prompt stays under the cap: " + SYSTEM.length);
 });
+
+test("look: items below the visible area are listed and marked 'scroll first' (found on a real browser: example.com's link sits under the fold)", async () => {
+  fake(); SCREEN.lib.pageMap = async () => ({ ok: true, url: "https://example.com/", title: "Example Domain", text: "t", total_chars: 1, view: { width: 1271, height: 652, scrollY: 0, pageHeight: 735 },
+    items: [{ n: 1, kind: "a", label: "Learn more", x: 632, y: 837, where: "below" }, { n: 2, kind: "button", label: "Top", x: 10, y: 10, where: "" }] });
+  const r = await vmScreenLook(); assert.equal(r.ok, true);
+  assert.match(r.result.clickable[0], /Learn more.*\[below: scroll first\]/); assert.doesNotMatch(r.result.clickable[1], /scroll first/);
+  assert.match(r.result.view, /652.*735/); assert.match(r.result.note, /scroll first|vm_screen_scroll/);
+});
