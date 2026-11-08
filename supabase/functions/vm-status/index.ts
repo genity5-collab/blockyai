@@ -5,6 +5,6 @@ Deno.serve(handle(async (req) => {
   const { session: s } = await authOwner(req, sid);
   let live: string | null = null;
   if (s.vm_id) { try { live = (await fs().vms.ref(s.vm_id).data() as any).state; } catch { live = "unknown"; } }
-  const { id, vm_status, agent_state, last_active_at, plugin_last_seen_at } = s;
-  return json({ id, vm_status, agent_state, last_active_at, plugin_last_seen_at, freestyle_state: live, plugin_online: !!s.plugin_last_seen_at && Date.now() - new Date(s.plugin_last_seen_at).getTime() < 30_000 });
+  const { id, vm_status, agent_state, last_active_at, plugin_last_seen_at, vm_boot_stage, vm_boot_started_at } = s;
+  return json({ id, vm_status, vm_boot_stage, vm_boot_started_at, agent_state, last_active_at, plugin_last_seen_at, freestyle_state: live, plugin_online: !!s.plugin_last_seen_at && Date.now() - new Date(s.plugin_last_seen_at).getTime() < 30_000 });
 }));
