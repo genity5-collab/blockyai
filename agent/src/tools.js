@@ -348,3 +348,5 @@ async function mirror(path, source) {
 // Build tools live in their own file (they import run from here), merged in after TOOLS is defined.
 import { BUILD_TOOLS } from "./tools-build.js";
 Object.assign(TOOLS, BUILD_TOOLS);
+import { VM_EXTRA_TOOLS } from "./tools-vm.js";
+Object.assign(TOOLS, VM_EXTRA_TOOLS);
