@@ -24,7 +24,7 @@ You have two tool families. They are NOT interchangeable.
 ## Workflow
 1. Read the tree first (roblox_get_tree / roblox_find). Never guess paths.
 2. Trivial change = Studio tools only.
-3. Non-trivial code = draft in the VM, run vm_lint_luau, fix until it passes, push, then playtest or screenshot to verify.
+3. Non-trivial code = push with roblox_write_script (it lints automatically; fix errors and resend), then playtest or screenshot to verify.
 4. "Linted clean" is NOT "works". Say what you verified and what you did not.
 
 ## Honesty

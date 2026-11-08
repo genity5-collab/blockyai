@@ -4,7 +4,7 @@ import { writeFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SYSTEM, POLICY, loadPolicy, toolFamily, summarizeArgs, handleUserMessage } from "../src/loop.js";
-import { hashSource, countLines, parseDiagnostics, mirrorFile, instFromMirrorFile, lintLedger, LINT_LINE_THRESHOLD, TOOLS } from "../src/tools.js";
+import { hashSource, countLines, parseDiagnostics, mirrorFile, instFromMirrorFile, lintLedger, deps, TOOLS } from "../src/tools.js";
 
 test("policy file is loaded and is part of the system prompt", () => {
   assert.ok(POLICY.includes("roblox_* tools change the live game") || POLICY.includes("roblox_\\* tools change the live game"));
@@ -36,22 +36,17 @@ test("mirror paths preserve the instance path as folders and round trip", () => 
 
 // ---- the 30-line guard on roblox_write_script ----
 const big = (n) => Array.from({ length: n }, (_, i) => `print(${i})`).join("\n") + "\n";
-test("GUARD: a script over 30 lines with NO prior lint is refused, with a message that names vm_lint_luau", async () => {
-  lintLedger.clear();
-  const r = await TOOLS.roblox_write_script.fn({ path: "ServerScriptService.Big", source: big(31) });
-  assert.equal(r.ok, false); assert.match(r.error, /REFUSED/); assert.match(r.error, /vm_lint_luau/); assert.ok(r.error.includes(hashSource(big(31))));
+test("write_script: a big script with NO prior vm_lint_luau is NOT refused for that reason; it goes straight to the automatic lint", async () => {
+  lintLedger.clear(); let linted = 0;
+  deps.lint = async (src) => { linted++; return { passed: false, problems: ["x.luau(1,1): TypeError: boom"], report: { file: "/tmp/x.luau" }, formatted: src, errors: [], warnings: [], hash: hashSource(src) }; };
+  try {
+    let msg;
+    try { const r = await TOOLS.roblox_write_script.fn({ path: "ServerScriptService.Big", source: big(45) }); msg = String(r.error); }
+    catch (e) { msg = String(e.message); }   // no backend in a unit test: the call reaching the network proves it was not stopped early by the old ledger refusal
+    assert.doesNotMatch(msg, /REFUSED/);
+  } finally { deps.lint = null; }
 });
-test("GUARD: the limit is 30 lines (31 refused)", () => assert.equal(LINT_LINE_THRESHOLD, 30));
-test("GUARD: a ledger entry for DIFFERENT content does not unlock a script", async () => {
-  lintLedger.clear(); lintLedger.set(hashSource(big(40)), { passed: true });
-  const r = await TOOLS.roblox_write_script.fn({ path: "X.Y", source: big(35) });
-  assert.equal(r.ok, false); assert.match(r.error, /REFUSED/);
-});
-test("GUARD: a FAILED lint entry does not unlock a script", async () => {
-  lintLedger.clear(); lintLedger.set(hashSource(big(35)), { passed: false });
-  const r = await TOOLS.roblox_write_script.fn({ path: "X.Y", source: big(35) });
-  assert.equal(r.ok, false); assert.match(r.error, /REFUSED/);
-});
+test("write_script: the tool description no longer demands a separate lint call", () => assert.doesNotMatch(TOOLS.roblox_write_script.args, /refused unless/i));
 test("empty source is rejected before anything else", async () => assert.equal((await TOOLS.roblox_write_script.fn({ path: "A.B", source: "  " })).ok, false));
 
 // ---- audit log ----

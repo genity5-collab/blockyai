@@ -68,7 +68,6 @@ const safe = (p) => String(p).replace(/[^A-Za-z0-9_./ -]/g, "_").replace(/\.\.+/
 export const TYPES_FILE = `${SANDBOX}/types/globalTypes.d.luau`;
 export const hashSource = (src) => createHash("sha256").update(String(src)).digest("hex").slice(0, 16);
 export const lintLedger = new Map();                       // content hash -> { at, name, passed }  (this session only; the agent restarts per session)
-export const LINT_LINE_THRESHOLD = 30;
 export const countLines = (src) => String(src).split("\n").filter((l, i, a) => i < a.length - 1 || l.length).length;
 
 // Parse "file(line,col): Kind: message" lines into structured errors.
@@ -293,12 +292,9 @@ export const TOOLS = {
       const w = windowText(full, { offset: a.offset, limit: a.limit ?? DEFAULT_READ });
       const hash = scriptGuard.recordWindow(a.path, full, { offset: w.offset, next_offset: w.next_offset, truncated: w.truncated });
       return { ...r, result: { class: r.result.class, source: w.text, hash, total_chars: w.total, offset: w.offset, truncated: w.truncated, next_offset: w.next_offset, ...(w.marker ? { marker: w.marker } : {}) } }; } },
-  roblox_write_script:    { args: "{path, source, class?, base_hash?}  base_hash is REQUIRED when the script already exists (the hash from a read_script that reached the end).  GUARDED: a script over 30 lines is refused unless this exact content already passed vm_lint_luau in this session. Smaller scripts are analyzed automatically.", fn: async (a) => {
+  roblox_write_script:    { args: "{path, source, class?, base_hash?}  base_hash is REQUIRED when the script already exists (the hash from a read_script that reached the end).  Every script is linted automatically (luau-lsp + stylua) and is NOT pushed if analysis fails: send each script once, fix errors and resend.", fn: async (a) => {
       if (typeof a.source !== "string" || !a.source.trim()) return { ok: false, error: "source is empty" };
       const lines = countLines(a.source);
-      // Hard rule: big script + no prior passing lint of THIS content = refuse, even if the code happens to be clean.
-      if (lines > LINT_LINE_THRESHOLD && !lintLedger.get(hashSource(a.source))?.passed)
-        return { ok: false, error: `REFUSED: this script is ${lines} lines (limit ${LINT_LINE_THRESHOLD} without a prior lint). No passing vm_lint_luau result exists for this exact source (content hash ${hashSource(a.source)}). Run vm_lint_luau on it in the VM first, fix every error, then call roblox_write_script again with the same source.` };
       // Overwriting an existing script needs proof that the MODEL read the whole current script (base_hash). This probe only finds out whether the script
       // exists; it is deliberately NOT recorded as a read, or the guard would approve every overwrite.
       const probe = await run("read_script", { path: a.path });

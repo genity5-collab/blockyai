@@ -28,7 +28,7 @@ Use service names directly: `Workspace.Yacht`, `ServerScriptService`, `Replicate
 - Each node: `name`, `class`, then `size [x,y,z]`, `position [x,y,z]`, `rotation [x,y,z]` in degrees, `color "#RRGGBB"`, `material` (short name like Metal, Wood, Glass, Neon, Concrete, SmoothPlastic), `transparency`, `reflectance`, `anchored`, `canCollide`, `shape` (Block/Ball/Cylinder for Part), `attributes`, `tags`, `properties`, `children`.
 - Positions are RELATIVE to the parent Model's origin. A sub-Model with a `position` moves all its children.
 - Root: set `primary_part` to the name of a main part, and `weld: true` if parts are unanchored. Decorative models stay anchored.
-- Scripts: `{ "class": "Script", "name": "DoorScript", "source": "..." }`. A script over 30 lines must be linted first with `vm_lint_luau`.
+- Scripts: `{ "class": "Script", "name": "DoorScript", "source": "..." }`. `roblox_write_script` lints every script automatically and refuses code that fails, so send each script ONCE (use `vm_lint_luau` only to check a draft you are not pushing yet).
 - Group sub-assemblies into named Models: Hull, Deck, Cabin, Railings, Lights. Name every part clearly.
 - Colors and positions use the formats above only. Do not send {r,g,b} tables unless a tool says it accepts them.
 
