@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Copy, Plug, KeyRound, Radar, Check, Plus, ArrowRight, Trash2, Clock } from "lucide-react";
 import Logo from "./Logo.jsx"; import { useApp } from "../lib/store.jsx"; import { ago, cx } from "../lib/util.js";
-import PluginModal from "./PluginModal.jsx";
+import PluginModal from "./PluginModal.jsx"; import Account from "./Account.jsx";
 
 function Tiles({ code }) {
   const chars = (code || "").padEnd(6, " ").split("");
@@ -19,6 +19,7 @@ export default function Landing() {
 
   return (
     <div className="landing">
+      <div style={{ position: "absolute", top: 14, right: 14, zIndex: 5 }}><Account /></div>
       <div className="hero">
         <div className="logo-wrap"><Logo size={112} spin /></div>
         <h1 className="title">Blocky<span>AI</span></h1>
