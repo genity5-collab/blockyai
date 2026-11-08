@@ -1,38 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { LogIn, LogOut } from "lucide-react";
-import { call } from "../lib/api.js"; import { useApp } from "../lib/store.jsx";
-import { readLoginResult, cleanLoginUrl, loginMessage, initials, safeAvatar } from "../lib/login.js";
+import { useAccountCtx } from "../lib/accountContext.jsx";
+import { initials, safeAvatar } from "../lib/login.js";
 
 // Sign in with Discord. Optional: the app works anonymously. Signing in links this browser to an account so its sessions follow it to other devices.
 export default function Account() {
-  const { toast } = useApp();
-  const [acct, setAcct] = useState(undefined);     // undefined = loading, null = signed out, object = signed in
-  const [busy, setBusy] = useState(false);
-
-  const load = async () => { const r = await call("auth-discord", { action: "me" }); setAcct(r?.error ? null : r?.account ?? null); return r?.account ?? null; };
-  useEffect(() => {
-    (async () => {
-      const a = await load();
-      const res = readLoginResult(window.location.search);
-      if (res) {
-        const m = loginMessage(res, a?.name); if (m) toast?.(m.text, m.kind);
-        window.history.replaceState(null, "", cleanLoginUrl(window.location.pathname, window.location.search, window.location.hash));
-      }
-    })();
-  }, []);
-
-  const signIn = async () => {
-    setBusy(true);
-    const r = await call("auth-discord", { action: "start", return_to: window.location.pathname + window.location.hash });
-    if (r?.url && /^https:\/\/discord\.com\/oauth2\/authorize\?/.test(r.url)) { window.location.assign(r.url); return; }
-    setBusy(false); toast?.(r?.error || "Could not start Discord sign-in", "error");
-  };
-  const signOut = async () => {
-    setBusy(true); const r = await call("auth-discord", { action: "logout" }); setBusy(false);
-    if (r?.error) return toast?.(r.error, "error");
-    setAcct(null); toast?.("Signed out on this browser", "info");
-  };
-
+  const { acct, busy, signIn, signOut } = useAccountCtx();
   return <AccountView acct={acct} busy={busy} onSignIn={signIn} onSignOut={signOut} />;
 }
 

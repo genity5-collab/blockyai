@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Copy, Plug, KeyRound, Radar, Check, Plus, ArrowRight, Trash2, Clock } from "lucide-react";
 import Logo from "./Logo.jsx"; import { useApp } from "../lib/store.jsx"; import { ago, cx } from "../lib/util.js";
-import PluginModal from "./PluginModal.jsx"; import Account from "./Account.jsx";
+import PluginModal from "./PluginModal.jsx"; import Account from "./Account.jsx"; import JoinPanel from "./JoinPanel.jsx"; import { useAccountCtx } from "../lib/accountContext.jsx";
 
 function Tiles({ code }) {
   const chars = (code || "").padEnd(6, " ").split("");
@@ -9,6 +9,7 @@ function Tiles({ code }) {
 }
 export default function Landing() {
   const { sessions, sid, data, pairing, createSession, refreshPairing, select, deleteSession, setPairing } = useApp();
+  const { acct, busy, signIn } = useAccountCtx();
   const [showPlugin, setShowPlugin] = useState(false);
   const [left, setLeft] = useState(0); const [burst, setBurst] = useState(false);
   const paired = !!data?.session?.plugin_connected_at;
@@ -37,11 +38,7 @@ export default function Landing() {
 
       <div className="connect glass hud">
         {!sid || !pairing ? (
-          <div className="center-col">
-            <div className="label">Ready when you are</div>
-            <button className="brick xl green" onClick={createSession}><Plus size={20} />Start new session</button>
-            <p className="muted small">You get a one-time code to link Roblox Studio. No account needed.</p>
-          </div>
+          <JoinPanel acct={acct} busy={busy} onDiscord={signIn} onAnonymous={createSession} />
         ) : burst || paired ? (
           <div className="connected"><div className="burst"><Check size={44} strokeWidth={3} /></div>
             <div className="label" style={{ color: "var(--green)" }}>Connected</div>
