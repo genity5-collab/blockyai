@@ -58,3 +58,10 @@ test("tracker: successes do NOT refund the budgets", () => {
   assert.equal(last.action, "stop");
 });
 test("tracker: the stop reason keeps the raw error text", () => { const r = new FailureTracker().record(call("a", {}), "plugin did not respond (is Studio open and paired?)"); assert.match(r.reason, /plugin did not respond/); });
+
+test("the system prompt describes the real failure policy (fix and retry), not 'a failed tool ends the run'", async () => {
+  const { SYSTEM } = await import("../src/loop.js");
+  assert.doesNotMatch(SYSTEM, /If a tool FAILS the run ends/);
+  assert.match(SYSTEM, /CHANGE the call/);
+  assert.match(SYSTEM, /Repeating the exact same failing call stops the run/);
+});
