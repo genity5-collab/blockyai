@@ -271,3 +271,11 @@
   .topbar .brick.sm.amber{padding-left:10px;padding-right:10px}
   .topbar .brick.sm.amber .rv-t{display:none}                   /* "Restart VM" becomes just its icon (it keeps its title and label) */
 }
+
+/* ---- phone: the page itself must never be wider than the screen (it was 468px on a 390px phone, so the browser zoomed everything out) ---- */
+html,body{max-width:100%;overflow-x:hidden}
+.strip{flex-wrap:wrap;min-width:0;row-gap:4px}
+@media (max-width:820px){
+  .strip{gap:8px 12px;padding:7px 12px}
+  .strip .sl{display:none}                                   /* the coloured dot + the number say it; the word stays in the tooltip */
+}

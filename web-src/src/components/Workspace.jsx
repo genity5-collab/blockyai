@@ -52,10 +52,10 @@ export default function Workspace() {
       </div>
 
       <footer className="strip glass">
-        <span className="stat"><i className="dot" style={{ color: "var(--dim)" }} /><span className="label">Queued</span><b className="num">{q}</b></span>
-        <span className="stat"><i className={cx("dot", r && "pulse")} style={{ color: "var(--blue)" }} /><span className="label">Running</span><b className="num">{r}</b></span>
-        <span className="stat"><i className="dot" style={{ color: "var(--green)" }} /><span className="label">Done</span><b className="num">{d}</b></span>
-        <span className="stat"><i className="dot" style={{ color: "var(--red)" }} /><span className="label">Failed</span><b className="num">{f}</b></span>
+        <span className="stat" title="Queued"><i className="dot" style={{ color: "var(--dim)" }} /><span className="label sl">Queued</span><b className="num">{q}</b></span>
+        <span className="stat" title="Running"><i className={cx("dot", r && "pulse")} style={{ color: "var(--blue)" }} /><span className="label sl">Running</span><b className="num">{r}</b></span>
+        <span className="stat" title="Done"><i className="dot" style={{ color: "var(--green)" }} /><span className="label sl">Done</span><b className="num">{d}</b></span>
+        <span className="stat" title="Failed"><i className="dot" style={{ color: "var(--red)" }} /><span className="label sl">Failed</span><b className="num">{f}</b></span>
         <div style={{ flex: 1 }} />
         <span className="stat hide-sm"><span className="label">Agent</span><b className="num">{iter}/{(s?.max_iterations ?? 12) * 3}</b></span>
         <span className="stat"><span className="label">Session</span><b className="num">{fmtDur(now - stats.started)}</b></span>

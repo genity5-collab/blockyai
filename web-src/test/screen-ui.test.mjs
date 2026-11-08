@@ -68,7 +68,10 @@ t("phone header css: the topbar can never be wider than the screen", /\.topbar\{
 const phone = css.slice(css.lastIndexOf("/* ---- phone header"));
 t("phone header css: on small screens the long account name, the place chip and the Restart VM words are hidden", /max-width:820px/.test(phone) && /\.topbar \.acct-name\{display:none\}/.test(phone) && /\.topbar \.place\{display:none\}/.test(phone) && /\.rv-t\{display:none\}/.test(phone) && /\.topbar\{overflow-x:hidden\}/.test(phone));
 globalThis.localStorage = { getItem: () => null, setItem() {} };
+const phone2 = css.slice(css.lastIndexOf("/* ---- phone: the page itself"));
+t("phone css: the whole page can never be wider than the screen", /html,body\{max-width:100%;overflow-x:hidden\}/.test(phone2) && /\.strip\{flex-wrap:wrap;min-width:0/.test(phone2) && /\.strip \.sl\{display:none\}/.test(phone2));
 const WS = (await vite.ssrLoadModule("/src/components/Workspace.jsx")).default;
 globalThis.__APP__ = { sid: "s1", data: { session: { vm_status: "running" }, commands: [], playtest_logs: [] }, ping: 30, stats: {}, sessions: [], vmBusy: false, ensureVm() {}, createSession() {}, select() {} };
 try { o = r(React.createElement(WS)); t("Restart VM keeps its name for screen readers when the words are hidden", /aria-label="Restart VM"/.test(o) && /class="rv-t">Restart VM</.test(o)); } catch (e) { t("workspace renders for the header check", false, String(e).slice(0, 160)); }
+if (typeof o === "string") t("the status counters keep a name when their words are hidden on phones", /title="Queued"/.test(o) && /title="Failed"/.test(o) && /class="label sl">Done</.test(o));
 await vite.close(); console.log(`screen-ui: ${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

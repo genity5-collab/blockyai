@@ -3,6 +3,7 @@ import { tokenDb, accountForSession } from "../_shared/tokendb.ts";
 import { chargeAiWork } from "../_shared/tokenflow.js";
 
 import { cleanEmbeds, mediaIdsIn } from "../_shared/embeds.js";
+import { dropPlaceholders } from "../_shared/placeholders.js";
 const OUTCOMES = new Set(["complete", "incomplete", "stopped", "error"]);
 const outcomeOf = (v: unknown) => (OUTCOMES.has(String(v)) ? String(v) : null);
 // Which of the media ids named in an embeds list really belong to this session (an image embed can only show the session's own pictures).
@@ -18,7 +19,7 @@ Deno.serve(handle(async (req) => {
     const after = new URL(req.url).searchParams.get("after") ?? "1970-01-01";
     // Messages the token gate refused (blocked = true) are NEVER handed to the agent: it must not spend model time on them.
     const { data } = await db.from("messages").select("*").eq("session_id", session.id).eq("blocked", false).gt("created_at", after).order("created_at");
-    return json(data);
+    return json(dropPlaceholders(data));      // the "Working..." line is never replayed to the model as something it said (it would copy it and never answer)
   }
   const b = await req.json();
   if (b.state) await db.from("sessions").update({ agent_state: b.state, last_active_at: new Date().toISOString() }).eq("id", session.id);
