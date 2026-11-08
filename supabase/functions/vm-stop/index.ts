@@ -1,5 +1,6 @@
 import { authOwner, handle, json, admin } from "../_shared/lib.ts";
 import { fs, IDLE_SUSPEND_MIN } from "../_shared/freestyle.ts";
+import { clearScreen } from "../_shared/clearscreen.js";
 
 // mode: "suspend" | "destroy". With no auth header + cron secret it sweeps idle / expired sessions.
 Deno.serve(handle(async (req) => {
@@ -9,6 +10,7 @@ Deno.serve(handle(async (req) => {
   const kill = async (s: any, mode: string) => {
     if (!s.vm_id) return;
     const vm = f.vms.ref(s.vm_id);
+    const cs = await clearScreen(db, s.id); if (!cs.ok) console.error("clearScreen:", cs.error);   // paused or destroyed: nobody is looking at a screen any more, so its last picture must not stay
     if (mode === "destroy") { await vm.delete().catch(() => {}); await db.from("sessions").update({ vm_id: null, vm_status: "stopped", agent_token_hash: null, agent_token_expires_at: null }).eq("id", s.id); }
     else { await vm.pause().catch(() => {}); await db.from("sessions").update({ vm_status: "suspended", agent_state: "idle" }).eq("id", s.id); }
   };

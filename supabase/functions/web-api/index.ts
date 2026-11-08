@@ -1,3 +1,4 @@
+import { clearScreen } from "../_shared/clearscreen.js";
 import { authOwner, handle, json, randToken, publicSession, ALLOWED, DESTRUCTIVE } from "../_shared/lib.ts";
 import { fs } from "../_shared/freestyle.ts";
 import { tokenDb, accountForOwner } from "../_shared/tokendb.ts";
@@ -76,6 +77,7 @@ Deno.serve(handle(async (req) => {
     case "session_delete": {
       need();
       if (session.vm_id) { try { await fs().vms.ref(session.vm_id).delete(); } catch { /* already gone */ } }
+      const cs = await clearScreen(db, session.id); if (!cs.ok) console.error("clearScreen:", cs.error);   // the last picture of the AI's screen goes with the session
       await db.from("sessions").delete().eq("id", session.id);
       return json({ ok: true });
     }
