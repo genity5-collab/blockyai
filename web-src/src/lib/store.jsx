@@ -73,12 +73,14 @@ export function AppProvider({ children }) {
   useEffect(() => { if (!sending) return; const t = setTimeout(() => setSending(false), 8000); return () => clearTimeout(t); }, [sending]);
 
   const send = async (text, attachmentIds = []) => {
-    if (!sid || agentBusy || (!text.trim() && !attachmentIds.length)) return false;
-    setSending(true);
+    const live = ["thinking", "working"].includes(data?.session?.agent_state);      // talking WHILE the agent works is allowed: it reads new messages between steps
+    if (!sid || sending || (!text.trim() && !attachmentIds.length)) return false;
+    if (!live) setSending(true);
     const r = await web("send_message", { session_id: sid, content: text, attachment_ids: attachmentIds });
     if (r.error) { setSending(false); toast(r.error, r.busy ? "warn" : "error"); return false; }
     // Out of tokens: the server stored the message and wrote the "Credits Usage Limit Reached" reply itself. The agent never sees it, so do NOT start a VM for it.
     if (r.out_of_tokens) { setSending(false); toast(r.limit_message || "Credits Usage Limit Reached. Come Back Tomorrow.", "warn"); return true; }
+    if (live) toast("Sent. Blocky reads it at its next step.", "info");
     ensureVm();                       // start the VM only for a message the server accepted
     loadSessions(); return true;
   };

@@ -111,6 +111,9 @@ export function attachmentContext(list) {
 
 import { parseReply, MAX_CALLS_PER_REPLY } from "./toolparse.js";
 import { compactMessages } from "./context.js";
+export function steerPrompt(texts) {
+  return `NEW MESSAGE FROM THE USER (sent while you were working). It is the NEWEST instruction and it OVERRIDES the earlier request wherever they conflict:\n${texts.map((t) => `<user_message>${String(t).slice(0, 4000)}</user_message>`).join("\n")}\nDecide at once:\n- It changes the goal: stop the old work, call plan_create for the NEW goal (that replaces the old plan) and do the new thing first.\n- It adds a task: keep your plan and add the new task to it.\n- It is a question or a comment: answer it in one or two sentences, then carry on.\nStart your reply with ONE short sentence telling the user which you chose. Do not keep following the old request out of habit.`;
+}
 import { isMutatingTool, currentTurn } from "./lifecycle.js";
 import { FailureTracker, classifyError } from "./failpolicy.js";
 import { RunLedger, factsEmbeds, findFabricated } from "./facts.js";
@@ -134,13 +137,13 @@ export function wrapUntrusted(v) {
   return `<untrusted_game_data>\n${t}\n</untrusted_game_data>`;
 }
 
-export async function handleUserMessage(history, userText, { maxIterations = 12, llm = api.llm, tools = TOOLS, say = api.say, update = api.update, shouldStop = async () => false, log = (r) => api.logToolCall(r), logLlm = (r) => api.logLlm(r), planApi = (action, body) => api.plan(action, body), messageId = null, contextChars = 120000 } = {}) {
+export async function handleUserMessage(history, userText, { maxIterations = 12, llm = api.llm, tools = TOOLS, say = api.say, update = api.update, shouldStop = async () => false, pollNew = async () => [], log = (r) => api.logToolCall(r), logLlm = (r) => api.logLlm(r), planApi = (action, body) => api.plan(action, body), messageId = null, contextChars = 120000 } = {}) {
   const runId = randomUUID(); let seq = 0; let gateRejections = 0, parseFailures = 0, consecutiveTruncations = 0;
   const msgs = [{ role: "system", content: SYSTEM }, ...history, { role: "user", content: userText }];   // userText already includes any <attachment> context
   const cards = [];
   let liveId = null;
   const ledger = new RunLedger();                         // what the tools REALLY returned this run: the system builds the final facts table from this, not the model
-  let fabStreak = 0, fabNote = "";
+  let fabStreak = 0, fabNote = ""; let pendingSteer = [];
   const tracker = new FailureTracker();                  // decides continue / retry / stop per CALL and per KIND of error (see failpolicy.js)
   let mutated = false;                                   // did ANY tool this turn change the game? decides whether the finish gate applies
   currentTurn.messageId = messageId;
@@ -154,6 +157,8 @@ export async function handleUserMessage(history, userText, { maxIterations = 12,
   try { await planApi("begin_turn", { message_id: messageId }); } catch {}
   for (let i = 1; i <= maxIterations; i++) {
     if (await shouldStop()) { await finish("stopped", "Stopped. Tell me what to do next."); return; }
+    try { pendingSteer.push(...(await pollNew())); } catch {}
+    if (pendingSteer.length) { msgs.push({ role: "user", content: steerPrompt(pendingSteer.map((m) => m.text ?? m.content ?? "")) }); pendingSteer = []; if (liveId) await update(liveId, "Got your new message, adjusting...", cards); }
     // Long runs: older tool results are shortened so the conversation stays inside the model's window. `msgs` itself is never changed.
     const r = await llm(compactMessages(msgs, { maxChars: contextChars }).messages);
     if (r.error) { await finish("error", `LLM error: ${r.error}`, { state: "error", showCards: false }); return; }
@@ -220,8 +225,9 @@ export async function handleUserMessage(history, userText, { maxIterations = 12,
       return;
     }
     const results = []; let failure = null;
-    for (const call of calls) {
+    for (const [ci, call] of calls.entries()) {
       if (await shouldStop()) break;
+      try { const f = await pollNew(); if (f.length) { pendingSteer.push(...f); results.push(`SKIPPED: ${calls.length - ci} remaining tool call(s) were not run because the user sent a new message. Re-plan from it.`); break; } } catch {}
       const t = tools[call.name]; const t0 = Date.now();
       const card = { id: `${cards.length + 1}`, name: call.name, family: toolFamily(call.name), args: call.args, status: "running" };
       cards.push(card);

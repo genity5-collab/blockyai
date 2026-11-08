@@ -37,3 +37,24 @@ export function makeStopFlag({ ask, now = Date.now, minIntervalMs = 1500 }) {
     return stopped;
   };
 }
+
+// While a run is in progress the user may type again ("no, do X instead", "also add Y"). One throttled query per interval serves BOTH
+// the Stop check and the new-message check. A new user message is handed over exactly once (marked handled so the main loop does not
+// start a second run for it). Messages the token gate refused (blocked) are never handed over. A failed query changes nothing.
+export function makeRunWatcher({ fetchAfter, since, handled, now = Date.now, minIntervalMs = 1500 }) {
+  let last = -Infinity, stopped = false; const fresh = []; const taken = [];
+  const poll = async () => {
+    const t = now(); if (t - last < minIntervalMs) return; last = t;
+    let msgs; try { msgs = await fetchAfter(since); } catch { return; }
+    if (!Array.isArray(msgs)) return;
+    for (const m of msgs) {
+      if (m.role === "system" && m.content === "__STOP__") { stopped = true; continue; }
+      if (m.role === "user" && !m.blocked && !handled.has(m.id)) { handled.add(m.id); fresh.push(m); }
+    }
+  };
+  return {
+    shouldStop: async () => { if (stopped) return true; await poll(); return stopped; },
+    takeFresh: async () => { await poll(); const out = fresh.splice(0); taken.push(...out); return out; },
+    taken,
+  };
+}

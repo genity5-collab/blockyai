@@ -49,6 +49,16 @@ if (typeof O === "function") {
 }
 
 
+// Chat while the agent is working: the user can still type, attach and send (the agent reads it between steps); Stop is next to Send.
+{
+  app({ agentBusy: true, data: { session: { agent_state: "working", mode: "chat" }, commands: [], attachments: [], messages: [{ id: 1, role: "user", content: "build a yacht", created_at: "2026-11-07T10:00:01Z" }] } });
+  const html = h(CH.default); const ta = (html.match(/<textarea[^>]*>/) || [""])[0];
+  t("busy chat: the text box is NOT disabled", ta.length > 0 && !/disabled/.test(ta), ta);
+  t("busy chat: placeholder tells the user they can change course", /change course/.test(ta), ta);
+  t("busy chat: Stop AND Send are both present", /aria-label="Stop"/.test(html) && /aria-label="Send and change course"/.test(html));
+  t("busy chat: the attach button is usable", !/<button[^>]*aria-label="Attach image or file"[^>]*disabled/.test(html) && !/<button[^>]*disabled[^>]*aria-label="Attach image or file"/.test(html));
+  t("busy chat: no locked styling", !/inbox locked/.test(html));
+}
 // Chat (Phase 1 item 8): the REAL Chat component renders the end state of each message. This test exists because the badge was once used without being imported.
 {
   const msg = (id, outcome, content) => ({ id, role: "assistant", content, outcome, embeds: null, created_at: "2026-11-07T10:00:0" + id + "Z" });

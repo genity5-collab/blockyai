@@ -1,4 +1,4 @@
-import { makeStopFlag } from "./context.js";
+import { makeRunWatcher } from "./context.js";
 import { api } from "./api.js";
 import { clampIterations, handleUserMessage, attachmentContext } from "./loop.js";
 
@@ -28,10 +28,14 @@ async function tick() {
     let text = m.content || "";
     if (Array.isArray(m.attachment_ids) && m.attachment_ids.length) { try { text += attachmentContext(await api.attachments(m.attachment_ids)); } catch (e) { console.error("attachments:", e.message); } }
     if (!text.trim()) continue;
+    const watcher = makeRunWatcher({ fetchAfter: (c) => api.messagesAfter(c), since: m.created_at, handled });
     try { stopRequested = false;
-      await handleUserMessage(history.slice(-20), text, { messageId: m.id, maxIterations: clampIterations(sess?.max_iterations), shouldStop: makeStopFlag({ ask: async () => { const r = await api.messagesAfter(m.created_at); return Array.isArray(r) && r.some((x) => x.role === "system" && x.content === "__STOP__"); } }) }); }
+      // One watcher serves Stop AND "the user typed something new while I was working" (read between steps, never lost, never run twice).
+      await handleUserMessage(history.slice(-20), text, { messageId: m.id, maxIterations: clampIterations(sess?.max_iterations), shouldStop: watcher.shouldStop,
+        pollNew: async () => { const out = []; for (const x of await watcher.takeFresh()) { let t = x.content || ""; if (Array.isArray(x.attachment_ids) && x.attachment_ids.length) { try { t += attachmentContext(await api.attachments(x.attachment_ids)); } catch {} } if (t.trim()) out.push({ id: x.id, text: t }); } return out; } }); }
     catch (e) { console.error("handle:", e.message); await api.say("assistant", "Agent error: " + String(e.message).slice(0, 200), null, "error"); }
     history.push({ role: "user", content: text });
+    for (const x of watcher.taken) history.push({ role: "user", content: x.content || "" });   // messages the user typed mid-run, in order, so the next turn remembers them
   }
 }
 for (;;) { try { await tick(); } catch (e) { console.error("tick", e.message); } await new Promise((r) => setTimeout(r, 1500)); }

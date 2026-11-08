@@ -34,14 +34,14 @@ export default function Chat() {
   };
   const submit = async () => {
     const t = text.trim(); const ready = files.filter((f) => f.id && !f.uploading);
-    if (agentBusy || files.some((f) => f.uploading) || (!t && !ready.length)) return;
+    if (files.some((f) => f.uploading) || (!t && !ready.length)) return;
     const ok = await send(t, ready.map((f) => f.id));
     if (ok) { setText(""); setFiles([]); if (box.current) box.current.style.height = "auto"; }
     box.current?.focus();
   };
   const onPaste = (e) => { const imgs = Array.from(e.clipboardData?.files ?? []).filter((f) => f.type.startsWith("image/")); if (imgs.length) { e.preventDefault(); addFiles(imgs); } };
   const onDrop = (e) => { e.preventDefault(); setDrag(false); if (e.dataTransfer?.files?.length) addFiles(e.dataTransfer.files); };
-  const onKey = (e) => { if (agentBusy && e.key === "Enter") { e.preventDefault(); return; } if (e.key === "Enter" && (e.ctrlKey || e.metaKey || !e.shiftKey)) { e.preventDefault(); submit(); } };
+  const onKey = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey || !e.shiftKey)) { e.preventDefault(); submit(); } };
   const useSel = async () => { const r = await queue("get_selection"); toast(r?.id ? "Asked Studio for your selection. Tell Blocky what to do with it." : "Could not request selection", r?.id ? "ok" : "error"); if (r?.id) setText((t) => (t ? t + " " : "") + "Use my current Studio selection: "); box.current?.focus(); };
   const chip = async (c) => { if (c[1] === "Screenshot") { const r = await queue("screenshot"); toast("Asked for a screenshot (Studio plugins may not allow this)", "warn"); return r; } if (c[1] === "Build me a...") { setText(c[2]); box.current?.focus(); } else send(c[2]); };
   const cmdsFor = (m) => (m.tool_calls ?? []).map((tc) => cmds.find((c) => c.id === tc.command_id) || tc);
@@ -78,10 +78,9 @@ export default function Chat() {
             <span className="nm">{f.name}<small>{f.uploading ? "reading..." : f.kind === "image" ? "image ready" : "file ready"}</small></span>
             <button className="x" onClick={() => setFiles((x) => x.filter((y) => (y.id || y.tmp) !== (f.id || f.tmp)))} aria-label={"Remove " + f.name}><X size={14} /></button></div>)}</div>}
         <input ref={fileIn} type="file" hidden multiple accept="image/png,image/jpeg,image/webp,image/gif,.lua,.luau,.txt,.md,.json,.csv,.log,.xml,.html,.css,.js,.ts" onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
-        <div className={"inbox" + (agentBusy ? " locked" : "")}><button className="iconbtn" onClick={() => fileIn.current?.click()} disabled={agentBusy || files.length >= 6} aria-label="Attach image or file" title="Attach image or file"><Paperclip size={18} /></button><textarea ref={box} value={text} rows={1} disabled={agentBusy} onPaste={onPaste} placeholder={agentBusy ? "Blocky is working... you can send again when it finishes" : "Tell Blocky what to build or fix..."} onChange={(e) => { setText(e.target.value); e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 150) + "px"; }} onKeyDown={onKey} aria-label="Message" />
-          {agentBusy
-            ? <button className="brick red send" onClick={stop} aria-label="Stop"><Square size={16} /></button>
-            : <button className="brick green send" onClick={submit} disabled={!text.trim() && !files.some((f) => f.id)} aria-label="Send"><Send size={18} /></button>}</div>
+        <div className="inbox"><button className="iconbtn" onClick={() => fileIn.current?.click()} disabled={files.length >= 6} aria-label="Attach image or file" title="Attach image or file"><Paperclip size={18} /></button><textarea ref={box} value={text} rows={1} onPaste={onPaste} placeholder={agentBusy ? "Blocky is working... type to change course or add something, it reads it right away" : "Tell Blocky what to build or fix..."} onChange={(e) => { setText(e.target.value); e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 150) + "px"; }} onKeyDown={onKey} aria-label="Message" />
+          {agentBusy && <button className="brick red send" onClick={stop} aria-label="Stop" title="Stop everything"><Square size={16} /></button>}
+          <button className="brick green send" onClick={submit} disabled={!text.trim() && !files.some((f) => f.id)} aria-label={agentBusy ? "Send and change course" : "Send"} title={agentBusy ? "Send now: Blocky reads it at its next step" : "Send"}><Send size={18} /></button></div>
         <div className="hint small muted"><kbd>Enter</kbd> or <kbd>Ctrl Enter</kbd> to send &middot; <kbd>Shift Enter</kbd> new line</div>
       </div>
       {confirm && <ConfirmModal cmd={cmds.find((c) => c.id === confirm.id) || confirm} onClose={() => setConfirm(null)} />}

@@ -157,9 +157,10 @@ Deno.serve(handle(async (req) => {
     }
     case "send_message": {
       need(); const text = String(body.content ?? "").trim().slice(0, 4000); if (!text && !(Array.isArray(body.attachment_ids) && body.attachment_ids.length)) return json({ error: "empty" }, 400);
-      // One message at a time: refuse while the agent is still answering. A stale lock (agent crashed) expires after 3 minutes.
-      if (["thinking", "working"].includes(session.agent_state) && Date.now() - new Date(session.last_active_at ?? 0).getTime() < 180_000)
-        return json({ error: "Blocky is still working. Wait for it to finish, or press Stop.", busy: true }, 409);
+      // The user may talk while the agent is working ("no, do X instead"). The message is stored like any other and the running agent reads it
+      // between steps (agent/src/context.js makeRunWatcher). It is NOT a new run, so it has no run_started_at (AI-work billing windows stay intact)
+      // and it does not touch agent_state. A stale "working" state (agent crashed, 3 minutes) counts as idle, so the next message starts a normal run.
+      const live = ["thinking", "working"].includes(session.agent_state) && Date.now() - new Date(session.last_active_at ?? 0).getTime() < 180_000;
       const ids: string[] = Array.isArray(body.attachment_ids) ? body.attachment_ids.map(String).slice(0, 6) : [];
       let okIds: string[] = [];
       if (ids.length) { const { data: own } = await db.from("attachments").select("id").eq("session_id", session.id).in("id", ids); okIds = (own ?? []).map((r: { id: string }) => r.id); }
@@ -174,8 +175,8 @@ Deno.serve(handle(async (req) => {
         await db.from("messages").insert({ session_id: session.id, role: "assistant", content: gate.limitMessage, outcome: "complete", blocked: true });
         return json({ ...blockedMsg, blocked: true, out_of_tokens: true, balance: gate.balance, limit_message: gate.limitMessage });
       }
-      const { data } = await db.from("messages").insert({ id: msgId, session_id: session.id, role: "user", content: text, attachment_ids: okIds, run_started_at: new Date().toISOString() }).select().single();
-      await db.from("sessions").update({ last_active_at: new Date().toISOString(), agent_state: "thinking" }).eq("id", session.id);
+      const { data } = await db.from("messages").insert({ id: msgId, session_id: session.id, role: "user", content: text, attachment_ids: okIds, run_started_at: live ? null : new Date().toISOString() }).select().single();
+      await db.from("sessions").update(live ? { last_active_at: new Date().toISOString() } : { last_active_at: new Date().toISOString(), agent_state: "thinking" }).eq("id", session.id);
       if (session.title === "New session") await db.from("sessions").update({ title: text.slice(0, 40) }).eq("id", session.id);
       return json(data);
     }
