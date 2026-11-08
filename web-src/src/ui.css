@@ -188,3 +188,23 @@
 .shot-lock:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 .th{display:inline-flex;align-items:center;gap:6px;padding:6px 10px}
 @media (prefers-reduced-motion:reduce){.gift-dot{animation:none}}
+
+/* ---- Markdown in chat replies ---- */
+.md{display:grid;gap:8px;min-width:0;overflow-wrap:anywhere;word-break:break-word}
+.md>*{margin:0;min-width:0}
+.md-p{white-space:pre-wrap}
+.md-h{font-family:var(--f-head);font-weight:700;line-height:1.25;color:var(--tx);margin-top:4px}
+.md-h1{font-size:1.2em;color:var(--blue)}.md-h2{font-size:1.12em;color:var(--blue)}.md-h3{font-size:1.04em;color:var(--green)}.md-h4{font-size:1em;color:var(--violet);text-transform:uppercase;letter-spacing:.04em}
+.md-l{padding-left:20px}.md-l li{margin:3px 0}.md-l li::marker{color:var(--blue)}
+.md-q{padding:2px 0 2px 12px;border-left:3px solid var(--violet);color:var(--mut);white-space:pre-wrap}
+.md-hr{border:0;height:2px;background:var(--line);border-radius:2px}
+.md-ic{padding:1px 6px;border-radius:6px;background:#0a0d14;border:1px solid var(--line);color:#9fe9ff;font-size:.88em;overflow-wrap:anywhere}
+.md-a{color:var(--blue);text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere}.md-a:hover{color:var(--green)}
+.md-code{max-width:100%}
+.md-code pre{white-space:pre;overflow:auto;max-width:100%;max-height:340px;-webkit-overflow-scrolling:touch;tab-size:2;overflow-wrap:normal;word-break:normal;user-select:text}
+.md-code pre code{font:inherit;background:none;border:0;padding:0}
+.md-copy{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:4px 10px;border-radius:9px;border:2px solid var(--line2);background:var(--s1);color:var(--blue);font:700 11px/1 var(--f-head);text-transform:uppercase;letter-spacing:.06em;cursor:pointer}
+.md-copy:hover:not(:disabled){background:var(--s3)}.md-copy:active{transform:translateY(1px)}
+.md-copy.ok{border-color:var(--green);color:var(--green);box-shadow:0 0 12px rgba(2,255,138,.3)}
+.md-copy.bad{border-color:var(--amber);color:var(--amber)}
+.md-copy:disabled{opacity:.4;cursor:default}

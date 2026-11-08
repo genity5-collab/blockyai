@@ -1,11 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import Markdown, { textLen, parseBlocks } from "./Markdown.jsx";
 import { Send, Camera, Play, Wrench, Hammer, MousePointerClick, Cuboid, Paperclip, X, FileText, Square, Loader2, Upload } from "lucide-react";
 import { useApp } from "../lib/store.jsx"; import { cx } from "../lib/util.js"; import { CommandCard, BatchCard, OutcomeBadge } from "./Cards.jsx"; import ConfirmModal from "./ConfirmModal.jsx"; import Embeds from "./Embeds.jsx"; import { PlanCard, ShotStrip, ModeSwitch } from "./Build.jsx";
 
 function Typewriter({ text, live }) {
-  const [n, setN] = useState(live ? 0 : text.length); const ref = useRef(text);
-  useEffect(() => { if (!live) { setN(text.length); return; } const t = setInterval(() => setN((x) => { if (x >= text.length) { clearInterval(t); return x; } return Math.min(text.length, x + Math.max(2, Math.ceil((text.length - x) / 14))); }), 22); return () => clearInterval(t); }, [text, live]);
-  return <>{text.slice(0, n)}{n < text.length && <span className="caret" />}</>;
+  // The message is parsed as a whole and rendered as formatted blocks. The typing effect only limits how many visible characters are shown,
+  // so a code fence or bold marker is never shown half-built.
+  const total = React.useMemo(() => textLen(parseBlocks(text)), [text]);
+  const [n, setN] = useState(live ? 0 : total);
+  useEffect(() => { if (!live) { setN(total); return; } const t = setInterval(() => setN((x) => { if (x >= total) { clearInterval(t); return x; } return Math.min(total, x + Math.max(2, Math.ceil(total / 90))); }), 22); return () => clearInterval(t); }, [text, live, total]);
+  return <><Markdown text={text} shown={n >= total ? undefined : n} />{n < total && <span className="caret" />}</>;
 }
 const CHIPS = [[Play, "Playtest", "Start a playtest and tell me what happens."], [Wrench, "Fix errors", "Look at the Output for errors and fix them."], [Camera, "Screenshot", null], [Hammer, "Build me a...", "Build me a "]];
 
