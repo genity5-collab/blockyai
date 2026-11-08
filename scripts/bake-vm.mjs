@@ -51,6 +51,12 @@ const load = await sh("cd /opt/blockyai/agent && node --input-type=module -e \"c
 console.log(load.out); if (load.code !== 0 || !/has build_model true/.test(load.out)) await fail("agent does not load on the VM");
 const tst = await sh("cd /opt/blockyai/agent && node --test test/loop.test.js test/never-stop.test.js test/routing.test.js 2>&1 | grep -E '^ℹ (tests|pass|fail)'");
 console.log(tst.out); if (!/fail 0/.test(tst.out)) await fail("agent tests fail on the VM");
+// Start the REAL service entry point (src/index.js), the file systemd runs. Importing loop.js and tools.js is not enough: a bad import in index.js
+// once made every new session's agent crash on start while all tests passed. It must still be ALIVE after 4 seconds (it idles waiting for messages).
+const boot2 = await sh("cd /opt/blockyai/agent && (BLOCKY_API=https://127.0.0.1:9 BLOCKY_AGENT_TOKEN=bake-check BLOCKY_SESSION_ID=bake-check timeout 4 node src/index.js > /tmp/entry.log 2>&1; echo exit=$? >> /tmp/entry.log); tail -12 /tmp/entry.log");
+console.log("entry point:", boot2.out.split("\n").slice(-4).join(" | ").slice(0, 300));
+// timeout kills a healthy process with exit 124. Any other exit, or a module/syntax error in the log, means the service would crash.
+if (!/exit=124/.test(boot2.out) || /SyntaxError|ERR_MODULE_NOT_FOUND|does not provide an export|Cannot find module|ReferenceError/.test(boot2.out)) await fail("the agent entry point (src/index.js) does not start: " + boot2.out.slice(0, 300));
 // real lint on the VM with a shipped template
 const lint = await sh("cd /home/ubuntu/project && cp templates/RemoteGuard.luau lint/t.luau 2>/dev/null; luau-lsp analyze --definitions=types/globalTypes.d.luau lint/t.luau 2>&1 | head -3; echo exit=$?");
 console.log("lint check:", lint.out);
