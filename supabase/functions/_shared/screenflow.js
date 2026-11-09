@@ -11,8 +11,16 @@ export const hostOf = (u) => { try { return new URL(String(u)).hostname.replace(
 //   {action:"skip"}                              a frame to SHOW arrived too soon after the last one: keep the old one (hides are never skipped)
 //   {action:"hide", row}                         store a record with NO image: the user sees a black frame
 //   {action:"show", row, bytes, mime, ext}       store the image and the record
+export const ERROR_NOTE = "The AI's browser hit a problem, so this view is paused. It is restarting the browser by itself.";
 export function planFrame(body, prev, now = Date.now()) {
   if (!body || typeof body !== "object") return { action: "reject", status: 400, error: "send JSON" };
+  // The VM says its own screen broke (browser crashed, display gone) and it is fixing it. The stored picture is REPLACED by a black "error" frame, so an old
+  // picture never stays up while the screen is dead. No page text is involved, so nothing can leak: only a short reason, screened like the activity line.
+  if (body.status === "error") {
+    const clean = (v, n) => (typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f<>]+/g, " ").trim().slice(0, n) : "");
+    const why = clean(body.why, 80) || "the browser stopped"; const act = clean(body.activity, 120);
+    return { action: "hide", row: { shown: false, hidden_kind: "error", hidden_why: textRisk(why).risky ? "the browser stopped" : why, storage_path: null, width: null, height: null, title: null, host: null, activity: act && !textRisk(act).risky ? act : "Fixing the browser" } };
+  }
   const unreadable = typeof body.text !== "string" || typeof body.url !== "string";
   const verdict = frameDecision({ unreadable, url: body.url, title: body.title, text: body.text, hasPasswordField: body.has_password_field === true, typed: typeof body.typed === "string" ? body.typed : "" });
 

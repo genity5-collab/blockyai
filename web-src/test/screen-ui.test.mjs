@@ -15,7 +15,7 @@ t("a shown frame is live with title, host and activity", s.kind === "live" && s.
 s = V.screenState({ seq: 4, shown: false, kind: "private", why: "a password field", activity: "Opening github.com/login", title: "SECRET TITLE", host: "github.com", image: IMG });
 t("a hidden frame is 'private' and carries NO title, host or picture", s.kind === "private" && !("title" in s) && !("host" in s) && !JSON.stringify(s).includes("SECRET") && !JSON.stringify(s).includes("github.com") === false ? true : (s.kind === "private" && !("title" in s) && !("host" in s) && !JSON.stringify(s).includes("SECRET TITLE")), JSON.stringify(s));
 t("private: the state object has no image field at all", s.kind === "private" && !("image" in s) && !JSON.stringify(s).includes(IMG));
-s = V.screenState({ seq: 5, shown: false, kind: "error", why: "the picture is not available yet" }); t("a server 'error' frame says 'not ready', it is not called private", s.kind === "error" && /not ready/.test(s.text));
+s = V.screenState({ seq: 5, shown: false, kind: "error", why: "the picture is not available yet" }); t("a server 'error' frame says the browser hit a problem and is restarting by itself; it is not called private", s.kind === "error" && /browser hit a problem/.test(s.text) && /restarting it by itself/.test(s.text) && !/private/.test(s.text));
 t("a network error is an error state", V.screenState({ seq: 2, shown: true, image: IMG }, { error: "Can't reach the server" }).kind === "error");
 t("'shown' with no picture and not 'unchanged' is an error, never a blank 'live'", V.screenState({ seq: 2, shown: true }).kind === "error");
 t("'unchanged' keeps showing the last picture", V.screenState({ seq: 2, shown: true, unchanged: true, title: "x", host: "h" }).kind === "live");

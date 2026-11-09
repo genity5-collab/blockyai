@@ -1,5 +1,5 @@
 import { authAgent, handle, json } from "../_shared/lib.ts";
-import { planFrame } from "../_shared/screenflow.js";
+import { planFrame, ERROR_NOTE } from "../_shared/screenflow.js";
 import { BLACK_FRAME_NOTE } from "../_shared/screenguard.js";
 
 // The VM sends {image (base64 JPEG/PNG), url, title, text, has_password_field, typed, activity}. THIS function decides what the user may see (see screenflow.js).
@@ -28,5 +28,5 @@ Deno.serve(handle(async (req) => {
   const { data: files } = await db.storage.from("screen").list(session.id, { limit: 100 });
   const stale = (files ?? []).map((f: any) => `${session.id}/${f.name}`).filter((n: string) => n !== path);
   if (stale.length) await db.storage.from("screen").remove(stale);
-  return json(plan.action === "show" ? { ok: true, shown: true, seq } : { ok: true, shown: false, seq, hidden: BLACK_FRAME_NOTE, why: plan.row.hidden_why });
+  return json(plan.action === "show" ? { ok: true, shown: true, seq } : { ok: true, shown: false, seq, hidden: plan.row.hidden_kind === "error" ? ERROR_NOTE : BLACK_FRAME_NOTE, why: plan.row.hidden_why });
 }));

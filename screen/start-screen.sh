@@ -9,7 +9,7 @@ nohup openbox >/tmp/openbox.log 2>&1 &
 sleep 0.5
 mkdir -p /home/ubuntu/chrome-profile
 rm -f /home/ubuntu/chrome-profile/Singleton*
-nohup google-chrome --no-sandbox --disable-dev-shm-usage --no-first-run --no-default-browser-check --disable-gpu \
+nohup google-chrome --no-sandbox --disable-dev-shm-usage --no-first-run --no-default-browser-check --disable-gpu --disable-extensions --disable-sync \
   --disable-features=Translate,PasswordManagerOnboarding --password-store=basic --disable-save-password-bubble \
   --user-data-dir=/home/ubuntu/chrome-profile --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 \
   --window-size=1280,800 --window-position=0,0 about:blank >/tmp/chrome.log 2>&1 &

@@ -1,0 +1,24 @@
+{
+  "URLBlocklist": [
+    "file://*", "chrome://*", "chrome-extension://*", "chrome-untrusted://*", "chrome-error://*", "devtools://*", "chrome-devtools://*", "view-source:*", "javascript:*", "ftp://*",
+    "localhost", "127.0.0.1", "[::1]", "0.0.0.0", "169.254.169.254", "metadata.google.internal",
+    "127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "100.64.0.0/10"
+  ],
+  "PasswordManagerEnabled": false,
+  "AutofillAddressEnabled": false,
+  "AutofillCreditCardEnabled": false,
+  "DownloadRestrictions": 3,
+  "AllowFileSelectionDialogs": false,
+  "DefaultFileSystemReadGuardSetting": 2,
+  "DefaultFileSystemWriteGuardSetting": 2,
+  "ExtensionInstallBlocklist": ["*"],
+  "DeveloperToolsAvailability": 2,
+  "IncognitoModeAvailability": 1,
+  "BrowserSignin": 0,
+  "SyncDisabled": true,
+  "DefaultPopupsSetting": 2,
+  "DefaultGeolocationSetting": 2,
+  "DefaultNotificationsSetting": 2,
+  "VideoCaptureAllowed": false,
+  "AudioCaptureAllowed": false
+}

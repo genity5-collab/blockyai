@@ -6,6 +6,8 @@
 import { READ_ONLY } from "../../supabase/functions/_shared/policy.js";
 
 export const currentTurn = { messageId: null };
+// A short line the screen shows once in its activity text (for example "Noted: ..." when the AI saves something to memory), so the user can watch it take notes.
+export const screenNote = { text: "" };
 
 // Tools that are not Studio commands at all (VM, planning, local search). They never change the game.
 const NON_STUDIO = /^(vm_|plan_|local_|sync_mirror$)/;

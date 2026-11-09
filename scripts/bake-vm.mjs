@@ -45,7 +45,7 @@ console.log("copied", files.length, "files +", tests.length, "tests");
 // the background and is polled, as Freestyle recommends for browser installs.
 const SCREEN = join(ROOT, "..", "screen");
 await sh("sudo mkdir -p /opt/blockyai/screen && sudo chown -R ubuntu:ubuntu /opt/blockyai");
-for (const n of ["screen.js", "install-screen.sh", "start-screen.sh", "blockyai-screen.service"]) await vm.fs.writeFile("/opt/blockyai/screen/" + n, readFileSync(join(SCREEN, n), "utf8"));
+for (const n of ["screen.js", "install-screen.sh", "start-screen.sh", "blockyai-screen.service", "chrome-policy.json"]) await vm.fs.writeFile("/opt/blockyai/screen/" + n, readFileSync(join(SCREEN, n), "utf8"));
 for (const n of ["screenflow.js", "mediacheck.js"]) await vm.fs.writeFile("/opt/blockyai/supabase/functions/_shared/" + n, readFileSync(join(ROOT, "..", "supabase/functions/_shared", n), "utf8"));
 await sh("chmod +x /opt/blockyai/screen/*.sh; rm -f /tmp/screen-install.done; (nohup bash /opt/blockyai/screen/install-screen.sh > /tmp/screen-install.out 2>&1; touch /tmp/screen-install.done) > /dev/null 2>&1 &");
 for (let i = 0; i < 40; i++) { if ((await sh("test -f /tmp/screen-install.done && echo D")).out === "D") break; await new Promise((r) => setTimeout(r, 8000)); }
@@ -61,9 +61,12 @@ const fr = await S.frame({ activity: "self check" }); o.frame = fr.ok; o.title =
 const plan = fr.ok ? planFrame(fr.payload, null, Date.now()) : { action: "none" }; o.decision = plan.action; o.size = plan.row ? plan.row.width + "x" + plan.row.height : null;
 o.loginHidden = planFrame({ ...fr.payload, url: "https://example.com/login" }, null, Date.now()).action === "hide";
 o.k = (await S.pressKey({ key: "ctrl+l" })).ok; o.c = (await S.click({ x: 400, y: 300 })).ok;
-console.log("SELFCHECK " + JSON.stringify(o)); process.exit(o.open && o.frame && o.shape && o.decision === "show" && o.loginHidden && o.k && o.c ? 0 : 1);`);
+// The lockdown must really hold: typing a local file or the browser debugging port into the address bar must end on a "blocked" page, not show the content.
+const nav = async (u) => { await S.pressKey({ key: "ctrl+l" }); await S.typeText({ text: u }); await S.pressKey({ key: "Return" }); await w(2500); const i = await S.pageInfo(); return /blocked|ERR_BLOCKED/i.test((i.title || "") + " " + (i.text || "")); };
+o.fileBlocked = await nav("file:///etc/hostname"); o.cdpBlocked = await nav("http://127.0.0.1:9222/json/version"); o.chromeBlocked = await nav("chrome://settings/passwords");
+console.log("SELFCHECK " + JSON.stringify(o)); process.exit(o.open && o.frame && o.shape && o.decision === "show" && o.loginHidden && o.k && o.c && o.fileBlocked && o.cdpBlocked && o.chromeBlocked ? 0 : 1);`);
 const sc = await sh("cd /opt/blockyai/screen && DISPLAY=:0 timeout 60 node selfcheck.mjs 2>&1 | tail -3"); console.log(sc.out);
-if (sc.code !== 0 || !/"decision":"show"/.test(sc.out)) await fail("the AI screen does not work on the VM: " + sc.out.slice(0, 300));
+if (sc.code !== 0 || !/"decision":"show"/.test(sc.out)) await fail("the AI screen does not work on the VM (or the browser lockdown does not hold: fileBlocked/cdpBlocked/chromeBlocked must be true): " + sc.out.slice(0, 400));
 await sh("sudo systemctl stop blockyai-screen");   // a fresh VM starts it on demand; the snapshot must not carry a running browser or a used profile
 await sh("rm -rf /home/ubuntu/chrome-profile /tmp/chrome.deb /tmp/screen-*.jpg");
 

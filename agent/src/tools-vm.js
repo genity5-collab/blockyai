@@ -7,7 +7,7 @@ import { lookup as dnsLookup } from "node:dns/promises";
 import { readFile, rm, mkdir } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { WORK, vmExec, vmWrite, redact } from "./tools.js";
-import { currentTurn } from "./lifecycle.js";
+import { currentTurn, screenNote } from "./lifecycle.js";
 import { windowText } from "./scriptguard.js";
 import { parseWebUrl, isPublicIp, htmlToText, extractTitle, parseDdgHtml } from "./netguard.js";
 import { loadMemory, saveMemory, addEntry, forget, promptBlock, renderMemory, KINDS } from "./memory.js";
@@ -123,7 +123,7 @@ export async function vmMemoryNote(a = {}) {
   const kind = String(a.kind ?? "");
   if (!KINDS[kind]) return { ok: false, error: `kind must be one of: ${Object.keys(KINDS).join(", ")}` };
   const text = String(a.text ?? ""); if (redact(text) !== text) return { ok: false, error: "that looks like a secret or token, so it was NOT saved. Never save credentials." };
-  try { const mem = await loadMemory(memoryFile()); const stored = addEntry(mem, kind, text); if (stored) await saveMemory(memoryFile(), mem); return { ok: true, result: { stored, kind, entries_in_kind: mem[kind].length, note: stored ? "saved to project memory" : "not saved (too short, or already known)" } }; }
+  try { const mem = await loadMemory(memoryFile()); const stored = addEntry(mem, kind, text); if (stored) { await saveMemory(memoryFile(), mem); screenNote.text = `Noted (${kind}): ${text.replace(/\s+/g, " ").slice(0, 80)}`; } return { ok: true, result: { stored, kind, entries_in_kind: mem[kind].length, note: stored ? "saved to project memory" : "not saved (too short, or already known)" } }; }
   catch (e) { return { ok: false, error: "memory write failed: " + String(e.message).slice(0, 150) }; }
 }
 export async function vmMemoryRead() { try { const mem = await loadMemory(memoryFile()); return { ok: true, result: { text: renderMemory(mem), counts: Object.fromEntries(Object.keys(KINDS).map((k) => [k, mem[k].length])) } }; } catch (e) { return { ok: false, error: String(e.message).slice(0, 150) }; } }

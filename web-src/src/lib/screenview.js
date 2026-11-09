@@ -12,7 +12,7 @@ export function screenState(r, { error = null } = {}) {
   if (error) return { kind: "error", text: "Can't reach the screen right now" };
   if (!r || typeof r !== "object" || r.none || !r.seq) return { kind: "waiting", text: "The AI has not opened a page yet" };
   if (r.shown === false) {
-    const why = r.kind === "error" ? "The picture is not ready yet" : "The AI is on a private page, so this view is hidden";
+    const why = r.kind === "error" ? "The AI's browser hit a problem, so this view is paused. It is restarting it by itself." : "The AI is on a private page, so this view is hidden";
     return { kind: r.kind === "error" ? "error" : "private", text: why, activity: cleanActivity(r.activity), hiddenFor: r.kind === "error" ? null : String(r.why || "").slice(0, 80) };
   }
   if (!r.image && !r.unchanged) return { kind: "error", text: "The picture is not ready yet" };

@@ -103,8 +103,18 @@ export async function shot({ quality = 60 } = {}) {
   return { ok: true, bytes: buf, base64: buf.toString("base64") };
 }
 // Picture + what the page says, taken together, in one go. This pair is exactly what the server needs.
-export async function frame({ typed = "", activity = "" } = {}) {
-  const info = await pageInfo(); const s = await shot();
+// The picture is judged by the page text read AROUND it (before and after the capture). If the page changed while the picture was taken (it navigated,
+// or a password field appeared), picture and text may not match, so the frame is sent as unreadable and the server hides it instead of trusting a stale reading.
+// d = the two readers, replaceable in tests.
+export async function frame({ typed = "", activity = "" } = {}, d = { pageInfo, shot }) {
+  const before = await d.pageInfo(); const s = await d.shot(); const after = await d.pageInfo();
   if (!s.ok) return { ok: false, error: s.error };
+  const same = !before.unreadable && !after.unreadable && before.url === after.url && before.title === after.title && before.has_password_field === after.has_password_field;
+  const info = same ? after : { unreadable: true };
   return { ok: true, payload: { image: s.base64, url: info.url, title: info.title, text: info.text, has_password_field: info.has_password_field, typed, activity, ...(info.unreadable ? { url: undefined, text: undefined } : {}) } };
+}
+// Brings the display, window manager and browser back (the start script is safe to run again). Fixed command, nothing the AI wrote reaches it.
+export async function restart() {
+  const r = await run("bash", ["/opt/blockyai/screen/start-screen.sh"], { timeout: 45000 });
+  return r.ok && /started/.test(r.stdout) ? { ok: true } : { ok: false, error: "could not restart the screen: " + (r.stderr || r.stdout).replace(/\s+/g, " ").slice(0, 120) };
 }
