@@ -1,4 +1,5 @@
 import { clearScreen } from "../_shared/clearscreen.js";
+import { liveStateOf } from "../_shared/vmlive.js";
 import { authOwner, handle, json, randToken, publicSession, ALLOWED, DESTRUCTIVE } from "../_shared/lib.ts";
 import { fs } from "../_shared/freestyle.ts";
 import { tokenDb, accountForOwner } from "../_shared/tokendb.ts";
@@ -240,9 +241,18 @@ Deno.serve(handle(async (req) => {
       return json({ ok: true });
     }
     case "vm_status": {
-      need(); let live: string | null = null;
-      if (session.vm_id) { try { live = (await fs().vms.ref(session.vm_id).data() as any).state; } catch { live = "unknown"; } }
-      return json({ vm_status: session.vm_status, freestyle_state: live });
+      need(); let live: string | null = null; let status = session.vm_status;
+      if (session.vm_id) {
+        let r: any; try { r = { data: await fs().vms.ref(session.vm_id).data() }; } catch (e) { r = { error: e }; }
+        const st = liveStateOf(r); live = st.live;
+        if (st.gone && ["running", "starting", "suspended"].includes(status)) {
+          // The provider says this computer does not exist any more, but we still said "running". Tell the truth (and drop its dead token), so the page restarts it instead of sending messages to nobody.
+          await db.from("sessions").update({ vm_id: null, vm_status: "stopped", vm_boot_stage: null, agent_token_hash: null, agent_token_expires_at: null }).eq("id", session.id);
+          const cs = await clearScreen(db, session.id); if (!cs.ok) console.error("clearScreen:", cs.error);
+          status = "stopped";
+        }
+      }
+      return json({ vm_status: status, freestyle_state: live });
     }
     default: return json({ error: "unknown action" }, 400);
   }
