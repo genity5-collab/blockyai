@@ -57,3 +57,12 @@ export function bootBar(vm, prevPct = 0, now = Date.now()) {
   const pct = Math.min(99, Math.max(Number(prevPct) || 0, raw));
   return { pct, done: false, label: stageInfo(stage).label, stage };
 }
+
+// What to tell the user when the AI's computer could not start. The server already wrote a plain message; this only picks the toast style
+// and stops the "warming up" wording when the server says trying again will not help.
+export function vmStartToast(r) {
+  if (!r || !r.error) return null;
+  const text = typeof r.error === "string" && r.error.length < 220 && !/[<>{}]/.test(r.error) ? r.error : "The AI computer could not start. Please try again in a minute.";
+  if (r.retry === false || r.reason === "capacity") return { text, tone: "error", retry: false };
+  return { text: r.reason ? text : "VM is warming up...", tone: "warn", retry: true };
+}

@@ -1,6 +1,7 @@
 import { authOwner, handle, json, randToken, sha256 } from "../_shared/lib.ts";
 import { fs, MAX_LIFETIME_S } from "../_shared/freestyle.ts";
 import { isStage } from "../_shared/bootstages.js";
+import { explainVmError } from "../_shared/vmerror.js";
 
 // Start (or resume) the VM for a session. The VM receives ONLY a scoped, short-lived agent token.
 Deno.serve(handle(async (req) => {
@@ -64,6 +65,9 @@ Deno.serve(handle(async (req) => {
     return json({ vm_id: id, status: "running" });
   } catch (e) {
     await db.from("sessions").update({ vm_status: "error", vm_boot_stage: null }).eq("id", s.id);
-    return json({ error: String((e as Error).message).slice(0, 300) }, 500);   // never echo secrets
+    const why = explainVmError(e);
+    console.error("vm-start failed:", why.reason, String((e as Error)?.message ?? e).replace(/BLOCKY_AGENT_TOKEN=\S+/g, "").slice(0, 300));   // the provider's own text stays in the server log only
+    // The user gets a plain reason and whether trying again can help. Never the provider's wording, never a secret.
+    return json({ error: why.message, reason: why.reason, retry: why.retry }, why.reason === "capacity" ? 503 : 500);
   }
 }));

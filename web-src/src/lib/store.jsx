@@ -1,3 +1,4 @@
+import { vmStartToast } from "./screenview.js";
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from "react";
 import { web, vm, identity } from "./api.js";
 import { blip, store as ls } from "./util.js";
@@ -62,7 +63,7 @@ export function AppProvider({ children }) {
       const st = await web("vm_status", { session_id: id }); const db = st.vm_status, live = st.freestyle_state;
       if (!force && db === "running" && live === "running") return;
       if (force || db === "error" || (db === "running" && live && !["running", "starting"].includes(live))) await vm.stop(id, "destroy");
-      const r = await vm.start(id); if (r.error) toast("VM is warming up...", "warn");
+      const r = await vm.start(id); const vt = vmStartToast(r); if (vt) { toast(vt.text, vt.tone); if (!vt.retry) vmTry.current = 99; }   // a capacity stop is not retried automatically
     } finally { setVmBusy(false); }
   }, [vmBusy, toast]);
 

@@ -74,4 +74,11 @@ const WS = (await vite.ssrLoadModule("/src/components/Workspace.jsx")).default;
 globalThis.__APP__ = { sid: "s1", data: { session: { vm_status: "running" }, commands: [], playtest_logs: [] }, ping: 30, stats: {}, sessions: [], vmBusy: false, ensureVm() {}, createSession() {}, select() {} };
 try { o = r(React.createElement(WS)); t("Restart VM keeps its name for screen readers when the words are hidden", /aria-label="Restart VM"/.test(o) && /class="rv-t">Restart VM</.test(o)); } catch (e) { t("workspace renders for the header check", false, String(e).slice(0, 160)); }
 if (typeof o === "string") t("the status counters keep a name when their words are hidden on phones", /title="Queued"/.test(o) && /title="Failed"/.test(o) && /class="label sl">Done</.test(o));
+const SV = await vite.ssrLoadModule("/src/lib/screenview.js");
+t("vm start: no error means no toast", SV.vmStartToast({ vm_id: "x", status: "running" }) === null && SV.vmStartToast(null) === null);
+let vt = SV.vmStartToast({ error: "The AI computer can't start right now because the service is at capacity. Please try again later.", reason: "capacity", retry: false });
+t("vm start: a capacity stop shows the plain reason as an error and is not retried", vt.tone === "error" && vt.retry === false && /capacity/.test(vt.text));
+vt = SV.vmStartToast({ error: "The AI computer is taking longer than usual to start. Trying again in a moment.", reason: "busy", retry: true }); t("vm start: a short hiccup is a warning that retries", vt.tone === "warn" && vt.retry === true);
+vt = SV.vmStartToast({ error: "old server text" }); t("vm start: an answer from an older server (no reason) keeps the old wording", vt.text === "VM is warming up..." && vt.retry === true);
+vt = SV.vmStartToast({ error: "<script>alert(1)</script>", reason: "error" }); t("vm start: odd server text is never shown as it is", !/script/.test(vt.text));
 await vite.close(); console.log(`screen-ui: ${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
